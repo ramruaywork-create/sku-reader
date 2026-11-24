@@ -1,0 +1,1532 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WARRIX SKU Reader</title>
+<!-- OCR: Tesseract.js (Apache-2.0) ทำงานในเครื่อง ไม่ส่งภาพออกอินเทอร์เน็ต -->
+<style>
+:root{--bg:#f4f6f8;--panel:#fff;--line:#d9dfe5;--text:#1d2730;--muted:#5d6a76;--accent:#1f6fb2;--accent-text:#fff;--good:#14733f;--warn:#8a5a00;--warn-bg:#fff6df;--bad:#b3261e;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#14191e;--panel:#1d242b;--line:#34404b;--text:#e7edf2;--muted:#9eacb8;--accent:#5aa9e6;--accent-text:#0d1720;--good:#62c98d;--warn:#f0c45c;--warn-bg:#352b12;--bad:#ff8a80;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 "Segoe UI","Leelawadee UI",Tahoma,sans-serif}
+main{max-width:1040px;margin:0 auto;padding:24px 16px 56px}
+h1{font-size:20px;line-height:28px;margin:0 0 16px;font-weight:600}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:var(--panel);border-radius:6px;padding:6px 12px}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-text);font-weight:600}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+#drop{display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:var(--panel);border:1px dashed var(--line);border-radius:8px;padding:20px 24px}
+#drop.over{border-color:var(--accent);border-style:solid}
+#drop strong{display:block;font-size:16px}
+#drop span{color:var(--muted)}
+#drop .grow{flex:1;min-width:220px}
+#status{margin-top:16px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 16px}
+#status.error{color:var(--bad);border-color:var(--bad)}
+#bar{height:4px;background:var(--line);border-radius:2px;margin-top:8px;overflow:hidden}
+#bar-fill{height:100%;width:0;background:var(--accent);transition:width .15s linear}
+#result{margin-top:16px;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:clip}
+.summary{position:sticky;top:0;z-index:2;background:var(--panel);display:flex;align-items:center;gap:8px 20px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line)}
+.summary b{font-size:18px;font-variant-numeric:tabular-nums}
+.summary .actions{margin-left:auto;display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.merge{display:inline-flex;align-items:center;gap:6px;cursor:pointer;margin-right:4px}
+.good{color:var(--good);font-weight:600}.warn{color:var(--warn);font-weight:600}.bad{color:var(--bad);font-weight:600}
+tr.group th{background:var(--bg);padding:8px;font-weight:400;font-size:13px;color:var(--text)}
+.ghead{display:flex;align-items:center;gap:4px 16px;flex-wrap:wrap}
+.ghead .gname{font-weight:600;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ghead button{margin-left:auto;font-size:12px;padding:2px 8px}
+.table{overflow-x:auto}
+table{width:100%;min-width:760px;border-collapse:collapse}
+th{font-size:12px;color:var(--muted);text-align:left;font-weight:600;padding:8px;border-bottom:1px solid var(--line)}
+td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+tr.flag td{background:var(--warn-bg)}
+.num{width:40px;color:var(--muted);text-align:right;padding-top:12px;font-variant-numeric:tabular-nums}
+.seen{width:300px;white-space:nowrap}
+.seen canvas{display:inline-block;vertical-align:middle;background:#fff;border:1px solid var(--line);border-radius:3px;margin-right:6px;max-width:210px}
+td input{width:100%;min-width:190px;height:32px;padding:4px 8px;border:1px solid var(--line);border-radius:5px;background:var(--panel);font-family:Consolas,"Segoe UI",monospace}
+td input.qty{width:72px;min-width:72px;text-align:right}
+.chips{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+.chips button{padding:1px 6px;font:12px Consolas,monospace}
+.chips select{height:26px;padding:1px 4px;border:1px solid var(--line);border-radius:5px;background:var(--panel);color:var(--text);font:12px "Segoe UI","Leelawadee UI",Tahoma,sans-serif}
+#db-status{display:block;margin-top:2px;color:var(--muted);font-size:12px}
+#db-status.warn{color:var(--warn)}
+.dbnote{display:block;margin-top:2px;color:var(--bad);font-weight:600}
+.state{width:120px;padding-top:9px;color:var(--muted);font-size:12px;white-space:nowrap}
+.state button{font-size:12px;padding:3px 8px}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:8px 16px;border-radius:6px;max-width:calc(100vw - 32px)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <h1>อ่าน SKU และจำนวนจากภาพออเดอร์</h1>
+  <section id="drop">
+    <div class="grow"><strong>วางภาพออเดอร์ที่นี่ ได้หลายรูป</strong><span>รองรับ WARRIX, Grand Sport, PEGAN และ EGO กด Ctrl+V หรือลากไฟล์มาวาง รูปไม่ถูกส่งออกจากเครื่อง</span><small id="db-status"></small></div>
+    <button id="pick" class="primary" type="button">เลือกหลายภาพ</button>
+    <input id="file" type="file" accept="image/*" multiple hidden>
+  </section>
+  <section id="status" role="status" hidden><div id="status-text"></div><div id="bar"><div id="bar-fill"></div></div></section>
+  <section id="result" hidden>
+    <div class="summary">
+      <span><b id="s-images">0</b> รูป</span>
+      <span><b id="s-count">0</b> รายการ</span>
+      <span>รวม <b id="s-total">0</b> ตัว</span>
+      <span id="s-match"></span>
+      <span id="s-flag"></span>
+      <span id="s-missing" class="bad" hidden></span>
+      <span id="s-failed" class="bad" hidden></span>
+      <div class="actions">
+        <label class="merge"><input id="merge" type="checkbox"><span id="merge-text">รวม SKU ซ้ำ</span></label>
+        <button id="clear" type="button">ล้างทั้งหมด</button>
+        <button id="csv" type="button">บันทึก CSV</button>
+        <button id="copy" class="primary" type="button">คัดลอกไปวาง Excel</button>
+      </div>
+    </div>
+    <div class="table"><table id="table">
+      <thead><tr><th style="text-align:right">#</th><th>ในภาพ</th><th>SKU</th><th>จำนวน</th><th>สถานะ</th></tr></thead>
+    </table></div>
+  </section>
+</main>
+<div id="toast" role="status" hidden></div>
+<script id="d-core" type="text/plain"></script>
+<script id="d-worker" type="text/plain"></script>
+<script id="d-eng" type="text/plain"></script>
+<script id="d-catalog" type="text/plain"></script>
+<script id="d-config" type="application/json">{"url":"","key":"","date":"2026-11-23","assets":["eng-1.bin","eng-2.bin","eng-3.bin"]}</script>
+<script>/*! For license information please see tesseract.min.js.LICENSE.txt */
+!function(t,r){"object"==typeof exports&&"object"==typeof module?module.exports=r():"function"==typeof define&&define.amd?define([],r):"object"==typeof exports?exports.Tesseract=r():t.Tesseract=r()}(self,(()=>(()=>{var t={670:t=>{function r(t){return r="function"==typeof Symbol&&"symbol"==typeof Symbol.iterator?function(t){return typeof t}:function(t){return t&&"function"==typeof Symbol&&t.constructor===Symbol&&t!==Symbol.prototype?"symbol":typeof t},r(t)}t.exports=function(){return"undefined"!=typeof window&&"object"===r(window.process)&&"renderer"===window.process.type||!("undefined"==typeof process||"object"!==r(process.versions)||!process.versions.electron)||"object"===("undefined"==typeof navigator?"undefined":r(navigator))&&"string"==typeof navigator.userAgent&&navigator.userAgent.indexOf("Electron")>=0}},760:(t,r,e)=>{function n(t){return n="function"==typeof Symbol&&"symbol"==typeof Symbol.iterator?function(t){return typeof t}:function(t){return t&&"function"==typeof Symbol&&t.constructor===Symbol&&t!==Symbol.prototype?"symbol":typeof t},n(t)}var o=function(t){"use strict";var r,e=Object.prototype,o=e.hasOwnProperty,i=Object.defineProperty||function(t,r,e){t[r]=e.value},a="function"==typeof Symbol?Symbol:{},c=a.iterator||"@@iterator",u=a.asyncIterator||"@@asyncIterator",f=a.toStringTag||"@@toStringTag";function l(t,r,e){return Object.defineProperty(t,r,{value:e,enumerable:!0,configurable:!0,writable:!0}),t[r]}try{l({},"")}catch(t){l=function(t,r,e){return t[r]=e}}function s(t,r,e,n){var o=r&&r.prototype instanceof m?r:m,a=Object.create(o.prototype),c=new N(n||[]);return i(a,"_invoke",{value:P(t,e,c)}),a}function h(t,r,e){try{return{type:"normal",arg:t.call(r,e)}}catch(t){return{type:"throw",arg:t}}}t.wrap=s;var p="suspendedStart",y="suspendedYield",v="executing",d="completed",g={};function m(){}function b(){}function w(){}var x={};l(x,c,(function(){return this}));var L=Object.getPrototypeOf,O=L&&L(L(A([])));O&&O!==e&&o.call(O,c)&&(x=O);var E=w.prototype=m.prototype=Object.create(x);function S(t){["next","throw","return"].forEach((function(r){l(t,r,(function(t){return this._invoke(r,t)}))}))}function j(t,r){function e(i,a,c,u){var f=h(t[i],t,a);if("throw"!==f.type){var l=f.arg,s=l.value;return s&&"object"===n(s)&&o.call(s,"__await")?r.resolve(s.__await).then((function(t){e("next",t,c,u)}),(function(t){e("throw",t,c,u)})):r.resolve(s).then((function(t){l.value=t,c(l)}),(function(t){return e("throw",t,c,u)}))}u(f.arg)}var a;i(this,"_invoke",{value:function(t,n){function o(){return new r((function(r,o){e(t,n,r,o)}))}return a=a?a.then(o,o):o()}})}function P(t,r,e){var n=p;return function(o,i){if(n===v)throw new Error("Generator is already running");if(n===d){if("throw"===o)throw i;return G()}for(e.method=o,e.arg=i;;){var a=e.delegate;if(a){var c=k(a,e);if(c){if(c===g)continue;return c}}if("next"===e.method)e.sent=e._sent=e.arg;else if("throw"===e.method){if(n===p)throw n=d,e.arg;e.dispatchException(e.arg)}else"return"===e.method&&e.abrupt("return",e.arg);n=v;var u=h(t,r,e);if("normal"===u.type){if(n=e.done?d:y,u.arg===g)continue;return{value:u.arg,done:e.done}}"throw"===u.type&&(n=d,e.method="throw",e.arg=u.arg)}}}function k(t,e){var n=e.method,o=t.iterator[n];if(o===r)return e.delegate=null,"throw"===n&&t.iterator.return&&(e.method="return",e.arg=r,k(t,e),"throw"===e.method)||"return"!==n&&(e.method="throw",e.arg=new TypeError("The iterator does not provide a '"+n+"' method")),g;var i=h(o,t.iterator,e.arg);if("throw"===i.type)return e.method="throw",e.arg=i.arg,e.delegate=null,g;var a=i.arg;return a?a.done?(e[t.resultName]=a.value,e.next=t.nextLoc,"return"!==e.method&&(e.method="next",e.arg=r),e.delegate=null,g):a:(e.method="throw",e.arg=new TypeError("iterator result is not an object"),e.delegate=null,g)}function _(t){var r={tryLoc:t[0]};1 in t&&(r.catchLoc=t[1]),2 in t&&(r.finallyLoc=t[2],r.afterLoc=t[3]),this.tryEntries.push(r)}function T(t){var r=t.completion||{};r.type="normal",delete r.arg,t.completion=r}function N(t){this.tryEntries=[{tryLoc:"root"}],t.forEach(_,this),this.reset(!0)}function A(t){if(t){var e=t[c];if(e)return e.call(t);if("function"==typeof t.next)return t;if(!isNaN(t.length)){var n=-1,i=function e(){for(;++n<t.length;)if(o.call(t,n))return e.value=t[n],e.done=!1,e;return e.value=r,e.done=!0,e};return i.next=i}}return{next:G}}function G(){return{value:r,done:!0}}return b.prototype=w,i(E,"constructor",{value:w,configurable:!0}),i(w,"constructor",{value:b,configurable:!0}),b.displayName=l(w,f,"GeneratorFunction"),t.isGeneratorFunction=function(t){var r="function"==typeof t&&t.constructor;return!!r&&(r===b||"GeneratorFunction"===(r.displayName||r.name))},t.mark=function(t){return Object.setPrototypeOf?Object.setPrototypeOf(t,w):(t.__proto__=w,l(t,f,"GeneratorFunction")),t.prototype=Object.create(E),t},t.awrap=function(t){return{__await:t}},S(j.prototype),l(j.prototype,u,(function(){return this})),t.AsyncIterator=j,t.async=function(r,e,n,o,i){void 0===i&&(i=Promise);var a=new j(s(r,e,n,o),i);return t.isGeneratorFunction(e)?a:a.next().then((function(t){return t.done?t.value:a.next()}))},S(E),l(E,f,"Generator"),l(E,c,(function(){return this})),l(E,"toString",(function(){return"[object Generator]"})),t.keys=function(t){var r=Object(t),e=[];for(var n in r)e.push(n);return e.reverse(),function t(){for(;e.length;){var n=e.pop();if(n in r)return t.value=n,t.done=!1,t}return t.done=!0,t}},t.values=A,N.prototype={constructor:N,reset:function(t){if(this.prev=0,this.next=0,this.sent=this._sent=r,this.done=!1,this.delegate=null,this.method="next",this.arg=r,this.tryEntries.forEach(T),!t)for(var e in this)"t"===e.charAt(0)&&o.call(this,e)&&!isNaN(+e.slice(1))&&(this[e]=r)},stop:function(){this.done=!0;var t=this.tryEntries[0].completion;if("throw"===t.type)throw t.arg;return this.rval},dispatchException:function(t){if(this.done)throw t;var e=this;function n(n,o){return c.type="throw",c.arg=t,e.next=n,o&&(e.method="next",e.arg=r),!!o}for(var i=this.tryEntries.length-1;i>=0;--i){var a=this.tryEntries[i],c=a.completion;if("root"===a.tryLoc)return n("end");if(a.tryLoc<=this.prev){var u=o.call(a,"catchLoc"),f=o.call(a,"finallyLoc");if(u&&f){if(this.prev<a.catchLoc)return n(a.catchLoc,!0);if(this.prev<a.finallyLoc)return n(a.finallyLoc)}else if(u){if(this.prev<a.catchLoc)return n(a.catchLoc,!0)}else{if(!f)throw new Error("try statement without catch or finally");if(this.prev<a.finallyLoc)return n(a.finallyLoc)}}}},abrupt:function(t,r){for(var e=this.tryEntries.length-1;e>=0;--e){var n=this.tryEntries[e];if(n.tryLoc<=this.prev&&o.call(n,"finallyLoc")&&this.prev<n.finallyLoc){var i=n;break}}i&&("break"===t||"continue"===t)&&i.tryLoc<=r&&r<=i.finallyLoc&&(i=null);var a=i?i.completion:{};return a.type=t,a.arg=r,i?(this.method="next",this.next=i.finallyLoc,g):this.complete(a)},complete:function(t,r){if("throw"===t.type)throw t.arg;return"break"===t.type||"continue"===t.type?this.next=t.arg:"return"===t.type?(this.rval=this.arg=t.arg,this.method="return",this.next="end"):"normal"===t.type&&r&&(this.next=r),g},finish:function(t){for(var r=this.tryEntries.length-1;r>=0;--r){var e=this.tryEntries[r];if(e.finallyLoc===t)return this.complete(e.completion,e.afterLoc),T(e),g}},catch:function(t){for(var r=this.tryEntries.length-1;r>=0;--r){var e=this.tryEntries[r];if(e.tryLoc===t){var n=e.completion;if("throw"===n.type){var o=n.arg;T(e)}return o}}throw new Error("illegal catch attempt")},delegateYield:function(t,e,n){return this.delegate={iterator:A(t),resultName:e,nextLoc:n},"next"===this.method&&(this.arg=r),g}},t}("object"===n(t=e.nmd(t))?t.exports:{});try{regeneratorRuntime=o}catch(t){"object"===("undefined"==typeof globalThis?"undefined":n(globalThis))?globalThis.regeneratorRuntime=o:Function("r","regeneratorRuntime = r")(o)}},793:(t,r,e)=>{function n(t){return n="function"==typeof Symbol&&"symbol"==typeof Symbol.iterator?function(t){return typeof t}:function(t){return t&&"function"==typeof Symbol&&t.constructor===Symbol&&t!==Symbol.prototype?"symbol":typeof t},n(t)}function o(){"use strict";o=function(){return t};var t={},r=Object.prototype,e=r.hasOwnProperty,i=Object.defineProperty||function(t,r,e){t[r]=e.value},a="function"==typeof Symbol?Symbol:{},c=a.iterator||"@@iterator",u=a.asyncIterator||"@@asyncIterator",f=a.toStringTag||"@@toStringTag";function l(t,r,e){return Object.defineProperty(t,r,{value:e,enumerable:!0,configurable:!0,writable:!0}),t[r]}try{l({},"")}catch(t){l=function(t,r,e){return t[r]=e}}function s(t,r,e,n){var o=r&&r.prototype instanceof y?r:y,a=Object.create(o.prototype),c=new P(n||[]);return i(a,"_invoke",{value:O(t,e,c)}),a}function h(t,r,e){try{return{type:"normal",arg:t.call(r,e)}}catch(t){return{type:"throw",arg:t}}}t.wrap=s;var p={};function y(){}function v(){}function d(){}var g={};l(g,c,(function(){return this}));var m=Object.getPrototypeOf,b=m&&m(m(k([])));b&&b!==r&&e.call(b,c)&&(g=b);var w=d.prototype=y.prototype=Object.create(g);function x(t){["next","throw","return"].forEach((function(r){l(t,r,(function(t){return this._invoke(r,t)}))}))}function L(t,r){function o(i,a,c,u){var f=h(t[i],t,a);if("throw"!==f.type){var l=f.arg,s=l.value;return s&&"object"==n(s)&&e.call(s,"__await")?r.resolve(s.__await).then((function(t){o("next",t,c,u)}),(function(t){o("throw",t,c,u)})):r.resolve(s).then((function(t){l.value=t,c(l)}),(function(t){return o("throw",t,c,u)}))}u(f.arg)}var a;i(this,"_invoke",{value:function(t,e){function n(){return new r((function(r,n){o(t,e,r,n)}))}return a=a?a.then(n,n):n()}})}function O(t,r,e){var n="suspendedStart";return function(o,i){if("executing"===n)throw new Error("Generator is already running");if("completed"===n){if("throw"===o)throw i;return{value:void 0,done:!0}}for(e.method=o,e.arg=i;;){var a=e.delegate;if(a){var c=E(a,e);if(c){if(c===p)continue;return c}}if("next"===e.method)e.sent=e._sent=e.arg;else if("throw"===e.method){if("suspendedStart"===n)throw n="completed",e.arg;e.dispatchException(e.arg)}else"return"===e.method&&e.abrupt("return",e.arg);n="executing";var u=h(t,r,e);if("normal"===u.type){if(n=e.done?"completed":"suspendedYield",u.arg===p)continue;return{value:u.arg,done:e.done}}"throw"===u.type&&(n="completed",e.method="throw",e.arg=u.arg)}}}function E(t,r){var e=r.method,n=t.iterator[e];if(void 0===n)return r.delegate=null,"throw"===e&&t.iterator.return&&(r.method="return",r.arg=void 0,E(t,r),"throw"===r.method)||"return"!==e&&(r.method="throw",r.arg=new TypeError("The iterator does not provide a '"+e+"' method")),p;var o=h(n,t.iterator,r.arg);if("throw"===o.type)return r.method="throw",r.arg=o.arg,r.delegate=null,p;var i=o.arg;return i?i.done?(r[t.resultName]=i.value,r.next=t.nextLoc,"return"!==r.method&&(r.method="next",r.arg=void 0),r.delegate=null,p):i:(r.method="throw",r.arg=new TypeError("iterator result is not an object"),r.delegate=null,p)}function S(t){var r={tryLoc:t[0]};1 in t&&(r.catchLoc=t[1]),2 in t&&(r.finallyLoc=t[2],r.afterLoc=t[3]),this.tryEntries.push(r)}function j(t){var r=t.completion||{};r.type="normal",delete r.arg,t.completion=r}function P(t){this.tryEntries=[{tryLoc:"root"}],t.forEach(S,this),this.reset(!0)}function k(t){if(t){var r=t[c];if(r)return r.call(t);if("function"==typeof t.next)return t;if(!isNaN(t.length)){var n=-1,o=function r(){for(;++n<t.length;)if(e.call(t,n))return r.value=t[n],r.done=!1,r;return r.value=void 0,r.done=!0,r};return o.next=o}}return{next:_}}function _(){return{value:void 0,done:!0}}return v.prototype=d,i(w,"constructor",{value:d,configurable:!0}),i(d,"constructor",{value:v,configurable:!0}),v.displayName=l(d,f,"GeneratorFunction"),t.isGeneratorFunction=function(t){var r="function"==typeof t&&t.constructor;return!!r&&(r===v||"GeneratorFunction"===(r.displayName||r.name))},t.mark=function(t){return Object.setPrototypeOf?Object.setPrototypeOf(t,d):(t.__proto__=d,l(t,f,"GeneratorFunction")),t.prototype=Object.create(w),t},t.awrap=function(t){return{__await:t}},x(L.prototype),l(L.prototype,u,(function(){return this})),t.AsyncIterator=L,t.async=function(r,e,n,o,i){void 0===i&&(i=Promise);var a=new L(s(r,e,n,o),i);return t.isGeneratorFunction(e)?a:a.next().then((function(t){return t.done?t.value:a.next()}))},x(w),l(w,f,"Generator"),l(w,c,(function(){return this})),l(w,"toString",(function(){return"[object Generator]"})),t.keys=function(t){var r=Object(t),e=[];for(var n in r)e.push(n);return e.reverse(),function t(){for(;e.length;){var n=e.pop();if(n in r)return t.value=n,t.done=!1,t}return t.done=!0,t}},t.values=k,P.prototype={constructor:P,reset:function(t){if(this.prev=0,this.next=0,this.sent=this._sent=void 0,this.done=!1,this.delegate=null,this.method="next",this.arg=void 0,this.tryEntries.forEach(j),!t)for(var r in this)"t"===r.charAt(0)&&e.call(this,r)&&!isNaN(+r.slice(1))&&(this[r]=void 0)},stop:function(){this.done=!0;var t=this.tryEntries[0].completion;if("throw"===t.type)throw t.arg;return this.rval},dispatchException:function(t){if(this.done)throw t;var r=this;function n(e,n){return a.type="throw",a.arg=t,r.next=e,n&&(r.method="next",r.arg=void 0),!!n}for(var o=this.tryEntries.length-1;o>=0;--o){var i=this.tryEntries[o],a=i.completion;if("root"===i.tryLoc)return n("end");if(i.tryLoc<=this.prev){var c=e.call(i,"catchLoc"),u=e.call(i,"finallyLoc");if(c&&u){if(this.prev<i.catchLoc)return n(i.catchLoc,!0);if(this.prev<i.finallyLoc)return n(i.finallyLoc)}else if(c){if(this.prev<i.catchLoc)return n(i.catchLoc,!0)}else{if(!u)throw new Error("try statement without catch or finally");if(this.prev<i.finallyLoc)return n(i.finallyLoc)}}}},abrupt:function(t,r){for(var n=this.tryEntries.length-1;n>=0;--n){var o=this.tryEntries[n];if(o.tryLoc<=this.prev&&e.call(o,"finallyLoc")&&this.prev<o.finallyLoc){var i=o;break}}i&&("break"===t||"continue"===t)&&i.tryLoc<=r&&r<=i.finallyLoc&&(i=null);var a=i?i.completion:{};return a.type=t,a.arg=r,i?(this.method="next",this.next=i.finallyLoc,p):this.complete(a)},complete:function(t,r){if("throw"===t.type)throw t.arg;return"break"===t.type||"continue"===t.type?this.next=t.arg:"return"===t.type?(this.rval=this.arg=t.arg,this.method="return",this.next="end"):"normal"===t.type&&r&&(this.next=r),p},finish:function(t){for(var r=this.tryEntries.length-1;r>=0;--r){var e=this.tryEntries[r];if(e.finallyLoc===t)return this.complete(e.completion,e.afterLoc),j(e),p}},catch:function(t){for(var r=this.tryEntries.length-1;r>=0;--r){var e=this.tryEntries[r];if(e.tryLoc===t){var n=e.completion;if("throw"===n.type){var o=n.arg;j(e)}return o}}throw new Error("illegal catch attempt")},delegateYield:function(t,r,e){return this.delegate={iterator:k(t),resultName:r,nextLoc:e},"next"===this.method&&(this.arg=void 0),p}},t}function i(t,r,e,n,o,i,a){try{var c=t[i](a),u=c.value}catch(t){return void e(t)}c.done?r(u):Promise.resolve(u).then(n,o)}function a(t){return function(){var r=this,e=arguments;return new Promise((function(n,o){var a=t.apply(r,e);function c(t){i(a,n,o,c,u,"next",t)}function u(t){i(a,n,o,c,u,"throw",t)}c(void 0)}))}}var c=e(311),u=function(){var t=a(o().mark((function t(r,e,n){var i;return o().wrap((function(t){for(;;)switch(t.prev=t.next){case 0:return t.next=2,c(e,1,n);case 2:return i=t.sent,t.abrupt("return",i.recognize(r).finally(a(o().mark((function t(){return o().wrap((function(t){for(;;)switch(t.prev=t.next){case 0:return t.next=2,i.terminate();case 2:case"end":return t.stop()}}),t)})))));case 4:case"end":return t.stop()}}),t)})));return function(r,e,n){return t.apply(this,arguments)}}(),f=function(){var t=a(o().mark((function t(r,e){var n;return o().wrap((function(t){for(;;)switch(t.prev=t.next){case 0:return t.next=2,c("osd",0,e);case 2:return n=t.sent,t.abrupt("return",n.detect(r).finally(a(o().mark((function t(){return o().wrap((function(t){for(;;)switch(t.prev=t.next){case 0:return t.next=2,n.terminate();case 2:case"end":return t.stop()}}),t)})))));case 4:case"end":return t.stop()}}),t)})));return function(r,e){return t.apply(this,arguments)}}();t.exports={recognize:u,detect:f}},847:t=>{t.exports={TESSERACT_ONLY:0,LSTM_ONLY:1,TESSERACT_LSTM_COMBINED:2,DEFAULT:3}},711:t=>{t.exports={OSD_ONLY:"0",AUTO_OSD:"1",AUTO_ONLY:"2",AUTO:"3",SINGLE_COLUMN:"4",SINGLE_BLOCK_VERT_TEXT:"5",SINGLE_BLOCK:"6",SINGLE_LINE:"7",SINGLE_WORD:"8",CIRCLE_WORD:"9",SINGLE_CHAR:"10",SPARSE_TEXT:"11",SPARSE_TEXT_OSD:"12",RAW_LINE:"13"}},341:t=>{t.exports={workerBlobURL:!0,logger:function(){}}},5:t=>{t.exports={AFR:"afr",AMH:"amh",ARA:"ara",ASM:"asm",AZE:"aze",AZE_CYRL:"aze_cyrl",BEL:"bel",BEN:"ben",BOD:"bod",BOS:"bos",BUL:"bul",CAT:"cat",CEB:"ceb",CES:"ces",CHI_SIM:"chi_sim",CHI_TRA:"chi_tra",CHR:"chr",CYM:"cym",DAN:"dan",DEU:"deu",DZO:"dzo",ELL:"ell",ENG:"eng",ENM:"enm",EPO:"epo",EST:"est",EUS:"eus",FAS:"fas",FIN:"fin",FRA:"fra",FRK:"frk",FRM:"frm",GLE:"gle",GLG:"glg",GRC:"grc",GUJ:"guj",HAT:"hat",HEB:"heb",HIN:"hin",HRV:"hrv",HUN:"hun",IKU:"iku",IND:"ind",ISL:"isl",ITA:"ita",ITA_OLD:"ita_old",JAV:"jav",JPN:"jpn",KAN:"kan",KAT:"kat",KAT_OLD:"kat_old",KAZ:"kaz",KHM:"khm",KIR:"kir",KOR:"kor",KUR:"kur",LAO:"lao",LAT:"lat",LAV:"lav",LIT:"lit",MAL:"mal",MAR:"mar",MKD:"mkd",MLT:"mlt",MSA:"msa",MYA:"mya",NEP:"nep",NLD:"nld",NOR:"nor",ORI:"ori",PAN:"pan",POL:"pol",POR:"por",PUS:"pus",RON:"ron",RUS:"rus",SAN:"san",SIN:"sin",SLK:"slk",SLV:"slv",SPA:"spa",SPA_OLD:"spa_old",SQI:"sqi",SRP:"srp",SRP_LATN:"srp_latn",SWA:"swa",SWE:"swe",SYR:"syr",TAM:"tam",TEL:"tel",TGK:"tgk",TGL:"tgl",THA:"tha",TIR:"tir",TUR:"tur",UIG:"uig",UKR:"ukr",URD:"urd",UZB:"uzb",UZB_CYRL:"uzb_cyrl",VIE:"vie",YID:"yid"}},106:(t,r,e)=>{var n=e(313),o=0;t.exports=function(t){var r=t.id,e=t.action,i=t.payload,a=void 0===i?{}:i,c=r;return void 0===c&&(c=n("Job",o),o+=1),{id:c,action:e,payload:a}}},936:function(t,r,e){function n(t){return n="function"==typeof Symbol&&"symbol"==typeof Symbol.iterator?function(t){return typeof t}:function(t){return t&&"function"==typeof Symbol&&t.constructor===Symbol&&t!==Symbol.prototype?"symbol":typeof t},n(t)}var o=this;function i(){"use strict";i=function(){return t};var t={},r=Object.prototype,e=r.hasOwnProperty,o=Object.defineProperty||function(t,r,e){t[r]=e.value},a="function"==typeof Symbol?Symbol:{},c=a.iterator||"@@iterator",u=a.asyncIterator||"@@asyncIterator",f=a.toStringTag||"@@toStringTag";function l(t,r,e){return Object.defineProperty(t,r,{value:e,enumerable:!0,configurable:!0,writable:!0}),t[r]}try{l({},"")}catch(t){l=function(t,r,e){return t[r]=e}}function s(t,r,e,n){var i=r&&r.prototype instanceof y?r:y,a=Object.create(i.prototype),c=new P(n||[]);return o(a,"_invoke",{value:O(t,e,c)}),a}function h(t,r,e){try{return{type:"normal",arg:t.call(r,e)}}catch(t){return{type:"throw",arg:t}}}t.wrap=s;var p={};function y(){}function v(){}function d(){}var g={};l(g,c,(function(){return this}));var m=Object.getPrototypeOf,b=m&&m(m(k([])));b&&b!==r&&e.call(b,c)&&(g=b);var w=d.prototype=y.prototype=Object.create(g);function x(t){["next","throw","return"].forEach((function(r){l(t,r,(function(t){return this._invoke(r,t)}))}))}function L(t,r){function i(o,a,c,u){var f=h(t[o],t,a);if("throw"!==f.type){var l=f.arg,s=l.value;return s&&"object"==n(s)&&e.call(s,"__await")?r.resolve(s.__await).then((function(t){i("next",t,c,u)}),(function(t){i("throw",t,c,u)})):r.resolve(s).then((function(t){l.value=t,c(l)}),(function(t){return i("throw",t,c,u)}))}u(f.arg)}var a;o(this,"_invoke",{value:function(t,e){function n(){return new r((function(r,n){i(t,e,r,n)}))}return a=a?a.then(n,n):n()}})}function O(t,r,e){var n="suspendedStart";return function(o,i){if("executing"===n)throw new Error("Generator is already running");if("completed"===n){if("throw"===o)throw i;return{value:void 0,done:!0}}for(e.method=o,e.arg=i;;){var a=e.delegate;if(a){var c=E(a,e);if(c){if(c===p)continue;return c}}if("next"===e.method)e.sent=e._sent=e.arg;else if("throw"===e.method){if("suspendedStart"===n)throw n="completed",e.arg;e.dispatchException(e.arg)}else"return"===e.method&&e.abrupt("return",e.arg);n="executing";var u=h(t,r,e);if("normal"===u.type){if(n=e.done?"completed":"suspendedYield",u.arg===p)continue;return{value:u.arg,done:e.done}}"throw"===u.type&&(n="completed",e.method="throw",e.arg=u.arg)}}}function E(t,r){var e=r.method,n=t.iterator[e];if(void 0===n)return r.delegate=null,"throw"===e&&t.iterator.return&&(r.method="return",r.arg=void 0,E(t,r),"throw"===r.method)||"return"!==e&&(r.method="throw",r.arg=new TypeError("The iterator does not provide a '"+e+"' method")),p;var o=h(n,t.iterator,r.arg);if("throw"===o.type)return r.method="throw",r.arg=o.arg,r.delegate=null,p;var i=o.arg;return i?i.done?(r[t.resultName]=i.value,r.next=t.nextLoc,"return"!==r.method&&(r.method="next",r.arg=void 0),r.delegate=null,p):i:(r.method="throw",r.arg=new TypeError("iterator result is not an object"),r.delegate=null,p)}function S(t){var r={tryLoc:t[0]};1 in t&&(r.catchLoc=t[1]),2 in t&&(r.finallyLoc=t[2],r.afterLoc=t[3]),this.tryEntries.push(r)}function j(t){var r=t.completion||{};r.type="normal",delete r.arg,t.completion=r}function P(t){this.tryEntries=[{tryLoc:"root"}],t.forEach(S,this),this.reset(!0)}function k(t){if(t){var r=t[c];if(r)return r.call(t);if("function"==typeof t.next)return t;if(!isNaN(t.length)){var n=-1,o=function r(){for(;++n<t.length;)if(e.call(t,n))return r.value=t[n],r.done=!1,r;return r.value=void 0,r.done=!0,r};return o.next=o}}return{next:_}}function _(){return{value:void 0,done:!0}}return v.prototype=d,o(w,"constructor",{value:d,configurable:!0}),o(d,"constructor",{value:v,configurable:!0}),v.displayName=l(d,f,"GeneratorFunction"),t.isGeneratorFunction=function(t){var r="function"==typeof t&&t.constructor;return!!r&&(r===v||"GeneratorFunction"===(r.displayName||r.name))},t.mark=function(t){return Object.setPrototypeOf?Object.setPrototypeOf(t,d):(t.__proto__=d,l(t,f,"GeneratorFunction")),t.prototype=Object.create(w),t},t.awrap=function(t){return{__await:t}},x(L.prototype),l(L.prototype,u,(function(){return this})),t.AsyncIterator=L,t.async=function(r,e,n,o,i){void 0===i&&(i=Promise);var a=new L(s(r,e,n,o),i);return t.isGeneratorFunction(e)?a:a.next().then((function(t){return t.done?t.value:a.next()}))},x(w),l(w,f,"Generator"),l(w,c,(function(){return this})),l(w,"toString",(function(){return"[object Generator]"})),t.keys=function(t){var r=Object(t),e=[];for(var n in r)e.push(n);return e.reverse(),function t(){for(;e.length;){var n=e.pop();if(n in r)return t.value=n,t.done=!1,t}return t.done=!0,t}},t.values=k,P.prototype={constructor:P,reset:function(t){if(this.prev=0,this.next=0,this.sent=this._sent=void 0,this.done=!1,this.delegate=null,this.method="next",this.arg=void 0,this.tryEntries.forEach(j),!t)for(var r in this)"t"===r.charAt(0)&&e.call(this,r)&&!isNaN(+r.slice(1))&&(this[r]=void 0)},stop:function(){this.done=!0;var t=this.tryEntries[0].completion;if("throw"===t.type)throw t.arg;return this.rval},dispatchException:function(t){if(this.done)throw t;var r=this;function n(e,n){return a.type="throw",a.arg=t,r.next=e,n&&(r.method="next",r.arg=void 0),!!n}for(var o=this.tryEntries.length-1;o>=0;--o){var i=this.tryEntries[o],a=i.completion;if("root"===i.tryLoc)return n("end");if(i.tryLoc<=this.prev){var c=e.call(i,"catchLoc"),u=e.call(i,"finallyLoc");if(c&&u){if(this.prev<i.catchLoc)return n(i.catchLoc,!0);if(this.prev<i.finallyLoc)return n(i.finallyLoc)}else if(c){if(this.prev<i.catchLoc)return n(i.catchLoc,!0)}else{if(!u)throw new Error("try statement without catch or finally");if(this.prev<i.finallyLoc)return n(i.finallyLoc)}}}},abrupt:function(t,r){for(var n=this.tryEntries.length-1;n>=0;--n){var o=this.tryEntries[n];if(o.tryLoc<=this.prev&&e.call(o,"finallyLoc")&&this.prev<o.finallyLoc){var i=o;break}}i&&("break"===t||"continue"===t)&&i.tryLoc<=r&&r<=i.finallyLoc&&(i=null);var a=i?i.completion:{};return a.type=t,a.arg=r,i?(this.method="next",this.next=i.finallyLoc,p):this.complete(a)},complete:function(t,r){if("throw"===t.type)throw t.arg;return"break"===t.type||"continue"===t.type?this.next=t.arg:"return"===t.type?(this.rval=this.arg=t.arg,this.method="return",this.next="end"):"normal"===t.type&&r&&(this.next=r),p},finish:function(t){for(var r=this.tryEntries.length-1;r>=0;--r){var e=this.tryEntries[r];if(e.finallyLoc===t)return this.complete(e.completion,e.afterLoc),j(e),p}},catch:function(t){for(var r=this.tryEntries.length-1;r>=0;--r){var e=this.tryEntries[r];if(e.tryLoc===t){var n=e.completion;if("throw"===n.type){var o=n.arg;j(e)}return o}}throw new Error("illegal catch attempt")},delegateYield:function(t,r,e){return this.delegate={iterator:k(t),resultName:r,nextLoc:e},"next"===this.method&&(this.arg=void 0),p}},t}function a(t,r){(null==r||r>t.length)&&(r=t.length);for(var e=0,n=new Array(r);e<r;e++)n[e]=t[e];return n}function c(t,r,e,n,o,i,a){try{var c=t[i](a),u=c.value}catch(t){return void e(t)}c.done?r(u):Promise.resolve(u).then(n,o)}function u(t){return function(){var r=this,e=arguments;return new Promise((function(n,o){var i=t.apply(r,e);function a(t){c(i,n,o,a,u,"next",t)}function u(t){c(i,n,o,a,u,"throw",t)}a(void 0)}))}}var f=e(106),l=e(185).log,s=e(313),h=0;t.exports=function(){var t=s("Scheduler",h),r={},e={},n=[];h+=1;var c=function(){return Object.keys(r).length},p=function(){if(0!==n.length)for(var t=Object.keys(r),o=0;o<t.length;o+=1)if(void 0===e[t[o]]){n[0](r[t[o]]);break}},y=function(r,c){return new Promise((function(s,h){var y=f({action:r,payload:c});n.push(function(){var t=u(i().mark((function t(u){return i().wrap((function(t){for(;;)switch(t.prev=t.next){case 0:return n.shift(),e[u.id]=y,t.prev=2,t.t0=s,t.next=6,u[r].apply(o,[].concat(function(t){if(Array.isArray(t))return a(t)}(i=c)||function(t){if("undefined"!=typeof Symbol&&null!=t[Symbol.iterator]||null!=t["@@iterator"])return Array.from(t)}(i)||function(t,r){if(t){if("string"==typeof t)return a(t,r);var e=Object.prototype.toString.call(t).slice(8,-1);return"Object"===e&&t.constructor&&(e=t.constructor.name),"Map"===e||"Set"===e?Array.from(t):"Arguments"===e||/^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(e)?a(t,r):void 0}}(i)||function(){throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method.")}(),[y.id]));case 6:t.t1=t.sent,(0,t.t0)(t.t1),t.next=13;break;case 10:t.prev=10,t.t2=t.catch(2),h(t.t2);case 13:return t.prev=13,delete e[u.id],p(),t.finish(13);case 17:case"end":return t.stop()}var i}),t,null,[[2,10,13,17]])})));return function(r){return t.apply(this,arguments)}}()),l("[".concat(t,"]: Add ").concat(y.id," to JobQueue")),l("[".concat(t,"]: JobQueue length=").concat(n.length)),p()}))},v=function(){var r=u(i().mark((function r(e){var n,o,a,u=arguments;return i().wrap((function(r){for(;;)switch(r.prev=r.next){case 0:if(0!==c()){r.next=2;break}throw Error("[".concat(t,"]: You need to have at least one worker before adding jobs"));case 2:for(n=u.length,o=new Array(n>1?n-1:0),a=1;a<n;a++)o[a-1]=u[a];return r.abrupt("return",y(e,o));case 4:case"end":return r.stop()}}),r)})));return function(t){return r.apply(this,arguments)}}(),d=function(){var t=u(i().mark((function t(){return i().wrap((function(t){for(;;)switch(t.prev=t.next){case 0:Object.keys(r).forEach(function(){var t=u(i().mark((function t(e){return i().wrap((function(t){for(;;)switch(t.prev=t.next){case 0:return t.next=2,r[e].terminate();case 2:case"end":return t.stop()}}),t)})));return function(r){return t.apply(this,arguments)}}()),n=[];case 2:case"end":return t.stop()}}),t)})));return function(){return t.apply(this,arguments)}}();return{addWorker:function(e){return r[e.id]=e,l("[".concat(t,"]: Add ").concat(e.id)),l("[".concat(t,"]: Number of workers=").concat(c())),p(),e.id},addJob:v,terminate:d,getQueueLen:function(){return n.length},getNumWorkers:c}}},311:(t,r,e)=>{function n(t){return n="function"==typeof Symbol&&"symbol"==typeof Symbol.iterator?function(t){return typeof t}:function(t){return t&&"function"==typeof Symbol&&t.constructor===Symbol&&t!==Symbol.prototype?"symbol":typeof t},n(t)}var o=["logger","errorHandler"];function i(){"use strict";i=function(){return t};var t={},r=Object.prototype,e=r.hasOwnProperty,o=Object.defineProperty||function(t,r,e){t[r]=e.value},a="function"==typeof Symbol?Symbol:{},c=a.iterator||"@@iterator",u=a.asyncIterator||"@@asyncIterator",f=a.toStringTag||"@@toStringTag";function l(t,r,e){return Object.defineProperty(t,r,{value:e,enumerable:!0,configurable:!0,writable:!0}),t[r]}try{l({},"")}catch(t){l=function(t,r,e){return t[r]=e}}function s(t,r,e,n){var i=r&&r.prototype instanceof y?r:y,a=Object.create(i.prototype),c=new P(n||[]);return o(a,"_invoke",{value:O(t,e,c)}),a}function h(t,r,e){try{return{type:"normal",arg:t.call(r,e)}}catch(t){return{type:"throw",arg:t}}}t.wrap=s;var p={};function y(){}function v(){}function d(){}var g={};l(g,c,(function(){return this}));var m=Object.getPrototypeOf,b=m&&m(m(k([])));b&&b!==r&&e.call(b,c)&&(g=b);var w=d.prototype=y.prototype=Object.create(g);function x(t){["next","throw","return"].forEach((function(r){l(t,r,(function(t){return this._invoke(r,t)}))}))}function L(t,r){function i(o,a,c,u){var f=h(t[o],t,a);if("throw"!==f.type){var l=f.arg,s=l.value;return s&&"object"==n(s)&&e.call(s,"__await")?r.resolve(s.__await).then((function(t){i("next",t,c,u)}),(function(t){i("throw",t,c,u)})):r.resolve(s).then((function(t){l.value=t,c(l)}),(function(t){return i("throw",t,c,u)}))}u(f.arg)}var a;o(this,"_invoke",{value:function(t,e){function n(){return new r((function(r,n){i(t,e,r,n)}))}return a=a?a.then(n,n):n()}})}function O(t,r,e){var n="suspendedStart";return function(o,i){if("executing"===n)throw new Error("Generator is already running");if("completed"===n){if("throw"===o)throw i;return{value:void 0,done:!0}}for(e.method=o,e.arg=i;;){var a=e.delegate;if(a){var c=E(a,e);if(c){if(c===p)continue;return c}}if("next"===e.method)e.sent=e._sent=e.arg;else if("throw"===e.method){if("suspendedStart"===n)throw n="completed",e.arg;e.dispatchException(e.arg)}else"return"===e.method&&e.abrupt("return",e.arg);n="executing";var u=h(t,r,e);if("normal"===u.type){if(n=e.done?"completed":"suspendedYield",u.arg===p)continue;return{value:u.arg,done:e.done}}"throw"===u.type&&(n="completed",e.method="throw",e.arg=u.arg)}}}function E(t,r){var e=r.method,n=t.iterator[e];if(void 0===n)return r.delegate=null,"throw"===e&&t.iterator.return&&(r.method="return",r.arg=void 0,E(t,r),"throw"===r.method)||"return"!==e&&(r.method="throw",r.arg=new TypeError("The iterator does not provide a '"+e+"' method")),p;var o=h(n,t.iterator,r.arg);if("throw"===o.type)return r.method="throw",r.arg=o.arg,r.delegate=null,p;var i=o.arg;return i?i.done?(r[t.resultName]=i.value,r.next=t.nextLoc,"return"!==r.method&&(r.method="next",r.arg=void 0),r.delegate=null,p):i:(r.method="throw",r.arg=new TypeError("iterator result is not an object"),r.delegate=null,p)}function S(t){var r={tryLoc:t[0]};1 in t&&(r.catchLoc=t[1]),2 in t&&(r.finallyLoc=t[2],r.afterLoc=t[3]),this.tryEntries.push(r)}function j(t){var r=t.completion||{};r.type="normal",delete r.arg,t.completion=r}function P(t){this.tryEntries=[{tryLoc:"root"}],t.forEach(S,this),this.reset(!0)}function k(t){if(t){var r=t[c];if(r)return r.call(t);if("function"==typeof t.next)return t;if(!isNaN(t.length)){var n=-1,o=function r(){for(;++n<t.length;)if(e.call(t,n))return r.value=t[n],r.done=!1,r;return r.value=void 0,r.done=!0,r};return o.next=o}}return{next:_}}function _(){return{value:void 0,done:!0}}return v.prototype=d,o(w,"constructor",{value:d,configurable:!0}),o(d,"constructor",{value:v,configurable:!0}),v.displayName=l(d,f,"GeneratorFunction"),t.isGeneratorFunction=function(t){var r="function"==typeof t&&t.constructor;return!!r&&(r===v||"GeneratorFunction"===(r.displayName||r.name))},t.mark=function(t){return Object.setPrototypeOf?Object.setPrototypeOf(t,d):(t.__proto__=d,l(t,f,"GeneratorFunction")),t.prototype=Object.create(w),t},t.awrap=function(t){return{__await:t}},x(L.prototype),l(L.prototype,u,(function(){return this})),t.AsyncIterator=L,t.async=function(r,e,n,o,i){void 0===i&&(i=Promise);var a=new L(s(r,e,n,o),i);return t.isGeneratorFunction(e)?a:a.next().then((function(t){return t.done?t.value:a.next()}))},x(w),l(w,f,"Generator"),l(w,c,(function(){return this})),l(w,"toString",(function(){return"[object Generator]"})),t.keys=function(t){var r=Object(t),e=[];for(var n in r)e.push(n);return e.reverse(),function t(){for(;e.length;){var n=e.pop();if(n in r)return t.value=n,t.done=!1,t}return t.done=!0,t}},t.values=k,P.prototype={constructor:P,reset:function(t){if(this.prev=0,this.next=0,this.sent=this._sent=void 0,this.done=!1,this.delegate=null,this.method="next",this.arg=void 0,this.tryEntries.forEach(j),!t)for(var r in this)"t"===r.charAt(0)&&e.call(this,r)&&!isNaN(+r.slice(1))&&(this[r]=void 0)},stop:function(){this.done=!0;var t=this.tryEntries[0].completion;if("throw"===t.type)throw t.arg;return this.rval},dispatchException:function(t){if(this.done)throw t;var r=this;function n(e,n){return a.type="throw",a.arg=t,r.next=e,n&&(r.method="next",r.arg=void 0),!!n}for(var o=this.tryEntries.length-1;o>=0;--o){var i=this.tryEntries[o],a=i.completion;if("root"===i.tryLoc)return n("end");if(i.tryLoc<=this.prev){var c=e.call(i,"catchLoc"),u=e.call(i,"finallyLoc");if(c&&u){if(this.prev<i.catchLoc)return n(i.catchLoc,!0);if(this.prev<i.finallyLoc)return n(i.finallyLoc)}else if(c){if(this.prev<i.catchLoc)return n(i.catchLoc,!0)}else{if(!u)throw new Error("try statement without catch or finally");if(this.prev<i.finallyLoc)return n(i.finallyLoc)}}}},abrupt:function(t,r){for(var n=this.tryEntries.length-1;n>=0;--n){var o=this.tryEntries[n];if(o.tryLoc<=this.prev&&e.call(o,"finallyLoc")&&this.prev<o.finallyLoc){var i=o;break}}i&&("break"===t||"continue"===t)&&i.tryLoc<=r&&r<=i.finallyLoc&&(i=null);var a=i?i.completion:{};return a.type=t,a.arg=r,i?(this.method="next",this.next=i.finallyLoc,p):this.complete(a)},complete:function(t,r){if("throw"===t.type)throw t.arg;return"break"===t.type||"continue"===t.type?this.next=t.arg:"return"===t.type?(this.rval=this.arg=t.arg,this.method="return",this.next="end"):"normal"===t.type&&r&&(this.next=r),p},finish:function(t){for(var r=this.tryEntries.length-1;r>=0;--r){var e=this.tryEntries[r];if(e.finallyLoc===t)return this.complete(e.completion,e.afterLoc),j(e),p}},catch:function(t){for(var r=this.tryEntries.length-1;r>=0;--r){var e=this.tryEntries[r];if(e.tryLoc===t){var n=e.completion;if("throw"===n.type){var o=n.arg;j(e)}return o}}throw new Error("illegal catch attempt")},delegateYield:function(t,r,e){return this.delegate={iterator:k(t),resultName:r,nextLoc:e},"next"===this.method&&(this.arg=void 0),p}},t}function a(t,r){(null==r||r>t.length)&&(r=t.length);for(var e=0,n=new Array(r);e<r;e++)n[e]=t[e];return n}function c(t,r){var e=Object.keys(t);if(Object.getOwnPropertySymbols){var n=Object.getOwnPropertySymbols(t);r&&(n=n.filter((function(r){return Object.getOwnPropertyDescriptor(t,r).enumerable}))),e.push.apply(e,n)}return e}function u(t){for(var r=1;r<arguments.length;r++){var e=null!=arguments[r]?arguments[r]:{};r%2?c(Object(e),!0).forEach((function(r){f(t,r,e[r])})):Object.getOwnPropertyDescriptors?Object.defineProperties(t,Object.getOwnPropertyDescriptors(e)):c(Object(e)).forEach((function(r){Object.defineProperty(t,r,Object.getOwnPropertyDescriptor(e,r))}))}return t}function f(t,r,e){return(r=function(t){var r=function(t,r){if("object"!==n(t)||null===t)return t;var e=t[Symbol.toPrimitive];if(void 0!==e){var o=e.call(t,"string");if("object"!==n(o))return o;throw new TypeError("@@toPrimitive must return a primitive value.")}return String(t)}(t);return"symbol"===n(r)?r:String(r)}(r))in t?Object.defineProperty(t,r,{value:e,enumerable:!0,configurable:!0,writable:!0}):t[r]=e,t}function l(t,r){if(null==t)return{};var e,n,o=function(t,r){if(null==t)return{};var e,n,o={},i=Object.keys(t);for(n=0;n<i.length;n++)e=i[n],r.indexOf(e)>=0||(o[e]=t[e]);return o}(t,r);if(Object.getOwnPropertySymbols){var i=Object.getOwnPropertySymbols(t);for(n=0;n<i.length;n++)e=i[n],r.indexOf(e)>=0||Object.prototype.propertyIsEnumerable.call(t,e)&&(o[e]=t[e])}return o}function s(t,r,e,n,o,i,a){try{var c=t[i](a),u=c.value}catch(t){return void e(t)}c.done?r(u):Promise.resolve(u).then(n,o)}function h(t){return function(){var r=this,e=arguments;return new Promise((function(n,o){var i=t.apply(r,e);function a(t){s(i,n,o,a,c,"next",t)}function c(t){s(i,n,o,a,c,"throw",t)}a(void 0)}))}}var p=e(187),y=e(549),v=e(106),d=e(185).log,g=e(313),m=e(847),b=e(581),w=b.defaultOptions,x=b.spawnWorker,L=b.terminateWorker,O=b.onMessage,E=b.loadImage,S=b.send,j=0;t.exports=h(i().mark((function t(){var r,e,n,c,f,s,b,P,k,_,T,N,A,G,I,F,R,D,M,C,U,Y,B,z,H,K,W,J,V,Z,Q,q,X,$,tt,rt,et,nt,ot,it,at=arguments;return i().wrap((function(t){for(;;)switch(t.prev=t.next){case 0:return r=at.length>0&&void 0!==at[0]?at[0]:"eng",e=at.length>1&&void 0!==at[1]?at[1]:m.LSTM_ONLY,n=at.length>2&&void 0!==at[2]?at[2]:{},c=at.length>3&&void 0!==at[3]?at[3]:{},f=g("Worker",j),s=p(u(u({},w),n)),b=s.logger,P=s.errorHandler,k=l(s,o),_={},T={},N="string"==typeof r?r.split("+"):r,A=e,G=c,I=[m.DEFAULT,m.LSTM_ONLY].includes(e)&&!k.legacyCore,D=new Promise((function(t,r){R=t,F=r})),M=function(t){F(t.message)},(C=x(k)).onerror=M,j+=1,U=function(t,r){_[t]=r},Y=function(t,r){T[t]=r},B=function(t){var r=t.id,e=t.action,n=t.payload;return new Promise((function(t,o){d("[".concat(f,"]: Start ").concat(r,", action=").concat(e));var i="".concat(e,"-").concat(r);U(i,t),Y(i,o),S(C,{workerId:f,jobId:r,action:e,payload:n})}))},z=function(){return console.warn("`load` is depreciated and should be removed from code (workers now come pre-loaded)")},H=function(t){return B(v({id:t,action:"load",payload:{options:{lstmOnly:I,corePath:k.corePath,logging:k.logging}}}))},K=function(t,r,e){return B(v({id:e,action:"FS",payload:{method:"writeFile",args:[t,r]}}))},W=function(t,r){return B(v({id:r,action:"FS",payload:{method:"readFile",args:[t,{encoding:"utf8"}]}}))},J=function(t,r){return B(v({id:r,action:"FS",payload:{method:"unlink",args:[t]}}))},V=function(t,r,e){return B(v({id:e,action:"FS",payload:{method:t,args:r}}))},Z=function(){return console.warn("`loadLanguage` is depreciated and should be removed from code (workers now come with language pre-loaded)")},Q=function(t,r){return B(v({id:r,action:"loadLanguage",payload:{langs:t,options:{langPath:k.langPath,dataPath:k.dataPath,cachePath:k.cachePath,cacheMethod:k.cacheMethod,gzip:k.gzip,lstmOnly:[m.DEFAULT,m.LSTM_ONLY].includes(A)&&!k.legacyLang}}}))},q=function(){return console.warn("`initialize` is depreciated and should be removed from code (workers now come pre-initialized)")},X=function(t,r,e,n){return B(v({id:n,action:"initialize",payload:{langs:t,oem:r,config:e}}))},$=function(){var t=arguments.length>0&&void 0!==arguments[0]?arguments[0]:"eng",r=arguments.length>1?arguments[1]:void 0,e=arguments.length>2?arguments[2]:void 0,n=arguments.length>3?arguments[3]:void 0;if(I&&[m.TESSERACT_ONLY,m.TESSERACT_LSTM_COMBINED].includes(r))throw Error("Legacy model requested but code missing.");var o=r||A;A=o;var i=e||G;G=i;var c,u=("string"==typeof t?t.split("+"):t).filter((function(t){return!N.includes(t)}));return N.push.apply(N,function(t){if(Array.isArray(t))return a(t)}(c=u)||function(t){if("undefined"!=typeof Symbol&&null!=t[Symbol.iterator]||null!=t["@@iterator"])return Array.from(t)}(c)||function(t,r){if(t){if("string"==typeof t)return a(t,r);var e=Object.prototype.toString.call(t).slice(8,-1);return"Object"===e&&t.constructor&&(e=t.constructor.name),"Map"===e||"Set"===e?Array.from(t):"Arguments"===e||/^(?:Ui|I)nt(?:8|16|32)(?:Clamped)?Array$/.test(e)?a(t,r):void 0}}(c)||function(){throw new TypeError("Invalid attempt to spread non-iterable instance.\nIn order to be iterable, non-array objects must have a [Symbol.iterator]() method.")}()),u.length>0?Q(u,n).then((function(){return X(t,o,i,n)})):X(t,o,i,n)},tt=function(){return B(v({id:arguments.length>1?arguments[1]:void 0,action:"setParameters",payload:{params:arguments.length>0&&void 0!==arguments[0]?arguments[0]:{}}}))},rt=function(){var t=h(i().mark((function t(r){var e,n,o,a=arguments;return i().wrap((function(t){for(;;)switch(t.prev=t.next){case 0:return e=a.length>1&&void 0!==a[1]?a[1]:{},n=a.length>2&&void 0!==a[2]?a[2]:{blocks:!0,text:!0,hocr:!0,tsv:!0},o=a.length>3?a[3]:void 0,t.t0=B,t.t1=v,t.t2=o,t.next=8,E(r);case 8:return t.t3=t.sent,t.t4=e,t.t5=n,t.t6={image:t.t3,options:t.t4,output:t.t5},t.t7={id:t.t2,action:"recognize",payload:t.t6},t.t8=(0,t.t1)(t.t7),t.abrupt("return",(0,t.t0)(t.t8));case 15:case"end":return t.stop()}}),t)})));return function(r){return t.apply(this,arguments)}}(),et=function(){var t=arguments.length>0&&void 0!==arguments[0]?arguments[0]:"Tesseract OCR Result",r=arguments.length>1&&void 0!==arguments[1]&&arguments[1],e=arguments.length>2?arguments[2]:void 0;return console.log("`getPDF` function is depreciated. `recognize` option `savePDF` should be used instead."),B(v({id:e,action:"getPDF",payload:{title:t,textonly:r}}))},nt=function(){var t=h(i().mark((function t(r,e){return i().wrap((function(t){for(;;)switch(t.prev=t.next){case 0:if(!I){t.next=2;break}throw Error("`worker.detect` requires Legacy model, which was not loaded.");case 2:return t.t0=B,t.t1=v,t.t2=e,t.next=7,E(r);case 7:return t.t3=t.sent,t.t4={image:t.t3},t.t5={id:t.t2,action:"detect",payload:t.t4},t.t6=(0,t.t1)(t.t5),t.abrupt("return",(0,t.t0)(t.t6));case 12:case"end":return t.stop()}}),t)})));return function(r,e){return t.apply(this,arguments)}}(),ot=function(){var t=h(i().mark((function t(){return i().wrap((function(t){for(;;)switch(t.prev=t.next){case 0:return null!==C&&(L(C),C=null),t.abrupt("return",Promise.resolve());case 2:case"end":return t.stop()}}),t)})));return function(){return t.apply(this,arguments)}}(),O(C,(function(t){var r=t.workerId,e=t.jobId,n=t.status,o=t.action,i=t.data,a="".concat(o,"-").concat(e);if("resolve"===n){d("[".concat(r,"]: Complete ").concat(e));var c=i;"recognize"===o?c=y(i):"getPDF"===o&&(c=Array.from(u(u({},i),{},{length:Object.keys(i).length}))),_[a]({jobId:e,data:c})}else if("reject"===n){if(T[a](i),"load"===o&&F(i),!P)throw Error(i);P(i)}else"progress"===n&&b(u(u({},i),{},{userJobId:e}))})),it={id:f,worker:C,setResolve:U,setReject:Y,load:z,writeText:K,readText:W,removeFile:J,FS:V,loadLanguage:Z,initialize:q,reinitialize:$,setParameters:tt,recognize:rt,getPDF:et,detect:nt,terminate:ot},H().then((function(){return Q(r)})).then((function(){return X(r,e,c)})).then((function(){return R(it)})).catch((function(){})),t.abrupt("return",D);case 40:case"end":return t.stop()}}),t)})))},352:(t,r,e)=>{function n(t){return n="function"==typeof Symbol&&"symbol"==typeof Symbol.iterator?function(t){return typeof t}:function(t){return t&&"function"==typeof Symbol&&t.constructor===Symbol&&t!==Symbol.prototype?"symbol":typeof t},n(t)}function o(t,r){var e=Object.keys(t);if(Object.getOwnPropertySymbols){var n=Object.getOwnPropertySymbols(t);r&&(n=n.filter((function(r){return Object.getOwnPropertyDescriptor(t,r).enumerable}))),e.push.apply(e,n)}return e}function i(t,r,e){return(r=function(t){var r=function(t,r){if("object"!==n(t)||null===t)return t;var e=t[Symbol.toPrimitive];if(void 0!==e){var o=e.call(t,"string");if("object"!==n(o))return o;throw new TypeError("@@toPrimitive must return a primitive value.")}return String(t)}(t);return"symbol"===n(r)?r:String(r)}(r))in t?Object.defineProperty(t,r,{value:e,enumerable:!0,configurable:!0,writable:!0}):t[r]=e,t}e(760);var a=e(936),c=e(311),u=e(793),f=e(5),l=e(847),s=e(711),h=e(185).setLogging;t.exports=function(t){for(var r=1;r<arguments.length;r++){var e=null!=arguments[r]?arguments[r]:{};r%2?o(Object(e),!0).forEach((function(r){i(t,r,e[r])})):Object.getOwnPropertyDescriptors?Object.defineProperties(t,Object.getOwnPropertyDescriptors(e)):o(Object(e)).forEach((function(r){Object.defineProperty(t,r,Object.getOwnPropertyDescriptor(e,r))}))}return t}({languages:f,OEM:l,PSM:s,createScheduler:a,createWorker:c,setLogging:h},u)},549:t=>{function r(t){return r="function"==typeof Symbol&&"symbol"==typeof Symbol.iterator?function(t){return typeof t}:function(t){return t&&"function"==typeof Symbol&&t.constructor===Symbol&&t!==Symbol.prototype?"symbol":typeof t},r(t)}function e(t,r){var e=Object.keys(t);if(Object.getOwnPropertySymbols){var n=Object.getOwnPropertySymbols(t);r&&(n=n.filter((function(r){return Object.getOwnPropertyDescriptor(t,r).enumerable}))),e.push.apply(e,n)}return e}function n(t){for(var r=1;r<arguments.length;r++){var n=null!=arguments[r]?arguments[r]:{};r%2?e(Object(n),!0).forEach((function(r){o(t,r,n[r])})):Object.getOwnPropertyDescriptors?Object.defineProperties(t,Object.getOwnPropertyDescriptors(n)):e(Object(n)).forEach((function(r){Object.defineProperty(t,r,Object.getOwnPropertyDescriptor(n,r))}))}return t}function o(t,e,n){return(e=function(t){var e=function(t,e){if("object"!==r(t)||null===t)return t;var n=t[Symbol.toPrimitive];if(void 0!==n){var o=n.call(t,"string");if("object"!==r(o))return o;throw new TypeError("@@toPrimitive must return a primitive value.")}return String(t)}(t);return"symbol"===r(e)?e:String(e)}(e))in t?Object.defineProperty(t,e,{value:n,enumerable:!0,configurable:!0,writable:!0}):t[e]=n,t}t.exports=function(t){var r=[],e=[],o=[],i=[],a=[];return t.blocks&&t.blocks.forEach((function(c){c.paragraphs.forEach((function(r){r.lines.forEach((function(e){e.words.forEach((function(o){o.symbols.forEach((function(i){a.push(n(n({},i),{},{page:t,block:c,paragraph:r,line:e,word:o}))})),i.push(n(n({},o),{},{page:t,block:c,paragraph:r,line:e}))})),o.push(n(n({},e),{},{page:t,block:c,paragraph:r}))})),e.push(n(n({},r),{},{page:t,block:c}))})),r.push(n(n({},c),{},{page:t}))})),n(n({},t),{},{blocks:r,paragraphs:e,lines:o,words:i,symbols:a})}},129:(t,r,e)=>{function n(t){return n="function"==typeof Symbol&&"symbol"==typeof Symbol.iterator?function(t){return typeof t}:function(t){return t&&"function"==typeof Symbol&&t.constructor===Symbol&&t!==Symbol.prototype?"symbol":typeof t},n(t)}var o=e(670);t.exports=function(t){var r={};return"undefined"!=typeof WorkerGlobalScope?r.type="webworker":o()?r.type="electron":"object"===("undefined"==typeof document?"undefined":n(document))?r.type="browser":"object"===("undefined"==typeof process?"undefined":n(process))&&(r.type="node"),void 0===t?r:r[t]}},313:t=>{t.exports=function(t,r){return"".concat(t,"-").concat(r,"-").concat(Math.random().toString(16).slice(3,8))}},185:function(t,r){var e=this,n=!1;r.logging=n,r.setLogging=function(t){n=t},r.log=function(){for(var t=arguments.length,r=new Array(t),o=0;o<t;o++)r[o]=arguments[o];return n?console.log.apply(e,r):null}},187:(t,r,e)=>{function n(t){return n="function"==typeof Symbol&&"symbol"==typeof Symbol.iterator?function(t){return typeof t}:function(t){return t&&"function"==typeof Symbol&&t.constructor===Symbol&&t!==Symbol.prototype?"symbol":typeof t},n(t)}function o(t,r){var e=Object.keys(t);if(Object.getOwnPropertySymbols){var n=Object.getOwnPropertySymbols(t);r&&(n=n.filter((function(r){return Object.getOwnPropertyDescriptor(t,r).enumerable}))),e.push.apply(e,n)}return e}function i(t,r,e){return(r=function(t){var r=function(t,r){if("object"!==n(t)||null===t)return t;var e=t[Symbol.toPrimitive];if(void 0!==e){var o=e.call(t,"string");if("object"!==n(o))return o;throw new TypeError("@@toPrimitive must return a primitive value.")}return String(t)}(t);return"symbol"===n(r)?r:String(r)}(r))in t?Object.defineProperty(t,r,{value:e,enumerable:!0,configurable:!0,writable:!0}):t[r]=e,t}var a="browser"===e(129)("type")?function(t){return new URL(t,window.location.href).href}:function(t){return t};t.exports=function(t){var r=function(t){for(var r=1;r<arguments.length;r++){var e=null!=arguments[r]?arguments[r]:{};r%2?o(Object(e),!0).forEach((function(r){i(t,r,e[r])})):Object.getOwnPropertyDescriptors?Object.defineProperties(t,Object.getOwnPropertyDescriptors(e)):o(Object(e)).forEach((function(r){Object.defineProperty(t,r,Object.getOwnPropertyDescriptor(e,r))}))}return t}({},t);return["corePath","workerPath","langPath"].forEach((function(e){t[e]&&(r[e]=a(r[e]))})),r}},854:(t,r,e)=>{function n(t){return n="function"==typeof Symbol&&"symbol"==typeof Symbol.iterator?function(t){return typeof t}:function(t){return t&&"function"==typeof Symbol&&t.constructor===Symbol&&t!==Symbol.prototype?"symbol":typeof t},n(t)}function o(t,r){var e=Object.keys(t);if(Object.getOwnPropertySymbols){var n=Object.getOwnPropertySymbols(t);r&&(n=n.filter((function(r){return Object.getOwnPropertyDescriptor(t,r).enumerable}))),e.push.apply(e,n)}return e}function i(t){for(var r=1;r<arguments.length;r++){var e=null!=arguments[r]?arguments[r]:{};r%2?o(Object(e),!0).forEach((function(r){a(t,r,e[r])})):Object.getOwnPropertyDescriptors?Object.defineProperties(t,Object.getOwnPropertyDescriptors(e)):o(Object(e)).forEach((function(r){Object.defineProperty(t,r,Object.getOwnPropertyDescriptor(e,r))}))}return t}function a(t,r,e){return(r=function(t){var r=function(t,r){if("object"!==n(t)||null===t)return t;var e=t[Symbol.toPrimitive];if(void 0!==e){var o=e.call(t,"string");if("object"!==n(o))return o;throw new TypeError("@@toPrimitive must return a primitive value.")}return String(t)}(t);return"symbol"===n(r)?r:String(r)}(r))in t?Object.defineProperty(t,r,{value:e,enumerable:!0,configurable:!0,writable:!0}):t[r]=e,t}var c=e(147).i8,u=e(341);t.exports=i(i({},u),{},{workerPath:"https://cdn.jsdelivr.net/npm/tesseract.js@v".concat(c,"/dist/worker.min.js")})},581:(t,r,e)=>{var n=e(854),o=e(676),i=e(100),a=e(202),c=e(772),u=e(931);t.exports={defaultOptions:n,spawnWorker:o,terminateWorker:i,onMessage:a,send:c,loadImage:u}},931:t=>{function r(t){return r="function"==typeof Symbol&&"symbol"==typeof Symbol.iterator?function(t){return typeof t}:function(t){return t&&"function"==typeof Symbol&&t.constructor===Symbol&&t!==Symbol.prototype?"symbol":typeof t},r(t)}function e(){"use strict";e=function(){return t};var t={},n=Object.prototype,o=n.hasOwnProperty,i=Object.defineProperty||function(t,r,e){t[r]=e.value},a="function"==typeof Symbol?Symbol:{},c=a.iterator||"@@iterator",u=a.asyncIterator||"@@asyncIterator",f=a.toStringTag||"@@toStringTag";function l(t,r,e){return Object.defineProperty(t,r,{value:e,enumerable:!0,configurable:!0,writable:!0}),t[r]}try{l({},"")}catch(t){l=function(t,r,e){return t[r]=e}}function s(t,r,e,n){var o=r&&r.prototype instanceof y?r:y,a=Object.create(o.prototype),c=new P(n||[]);return i(a,"_invoke",{value:O(t,e,c)}),a}function h(t,r,e){try{return{type:"normal",arg:t.call(r,e)}}catch(t){return{type:"throw",arg:t}}}t.wrap=s;var p={};function y(){}function v(){}function d(){}var g={};l(g,c,(function(){return this}));var m=Object.getPrototypeOf,b=m&&m(m(k([])));b&&b!==n&&o.call(b,c)&&(g=b);var w=d.prototype=y.prototype=Object.create(g);function x(t){["next","throw","return"].forEach((function(r){l(t,r,(function(t){return this._invoke(r,t)}))}))}function L(t,e){function n(i,a,c,u){var f=h(t[i],t,a);if("throw"!==f.type){var l=f.arg,s=l.value;return s&&"object"==r(s)&&o.call(s,"__await")?e.resolve(s.__await).then((function(t){n("next",t,c,u)}),(function(t){n("throw",t,c,u)})):e.resolve(s).then((function(t){l.value=t,c(l)}),(function(t){return n("throw",t,c,u)}))}u(f.arg)}var a;i(this,"_invoke",{value:function(t,r){function o(){return new e((function(e,o){n(t,r,e,o)}))}return a=a?a.then(o,o):o()}})}function O(t,r,e){var n="suspendedStart";return function(o,i){if("executing"===n)throw new Error("Generator is already running");if("completed"===n){if("throw"===o)throw i;return{value:void 0,done:!0}}for(e.method=o,e.arg=i;;){var a=e.delegate;if(a){var c=E(a,e);if(c){if(c===p)continue;return c}}if("next"===e.method)e.sent=e._sent=e.arg;else if("throw"===e.method){if("suspendedStart"===n)throw n="completed",e.arg;e.dispatchException(e.arg)}else"return"===e.method&&e.abrupt("return",e.arg);n="executing";var u=h(t,r,e);if("normal"===u.type){if(n=e.done?"completed":"suspendedYield",u.arg===p)continue;return{value:u.arg,done:e.done}}"throw"===u.type&&(n="completed",e.method="throw",e.arg=u.arg)}}}function E(t,r){var e=r.method,n=t.iterator[e];if(void 0===n)return r.delegate=null,"throw"===e&&t.iterator.return&&(r.method="return",r.arg=void 0,E(t,r),"throw"===r.method)||"return"!==e&&(r.method="throw",r.arg=new TypeError("The iterator does not provide a '"+e+"' method")),p;var o=h(n,t.iterator,r.arg);if("throw"===o.type)return r.method="throw",r.arg=o.arg,r.delegate=null,p;var i=o.arg;return i?i.done?(r[t.resultName]=i.value,r.next=t.nextLoc,"return"!==r.method&&(r.method="next",r.arg=void 0),r.delegate=null,p):i:(r.method="throw",r.arg=new TypeError("iterator result is not an object"),r.delegate=null,p)}function S(t){var r={tryLoc:t[0]};1 in t&&(r.catchLoc=t[1]),2 in t&&(r.finallyLoc=t[2],r.afterLoc=t[3]),this.tryEntries.push(r)}function j(t){var r=t.completion||{};r.type="normal",delete r.arg,t.completion=r}function P(t){this.tryEntries=[{tryLoc:"root"}],t.forEach(S,this),this.reset(!0)}function k(t){if(t){var r=t[c];if(r)return r.call(t);if("function"==typeof t.next)return t;if(!isNaN(t.length)){var e=-1,n=function r(){for(;++e<t.length;)if(o.call(t,e))return r.value=t[e],r.done=!1,r;return r.value=void 0,r.done=!0,r};return n.next=n}}return{next:_}}function _(){return{value:void 0,done:!0}}return v.prototype=d,i(w,"constructor",{value:d,configurable:!0}),i(d,"constructor",{value:v,configurable:!0}),v.displayName=l(d,f,"GeneratorFunction"),t.isGeneratorFunction=function(t){var r="function"==typeof t&&t.constructor;return!!r&&(r===v||"GeneratorFunction"===(r.displayName||r.name))},t.mark=function(t){return Object.setPrototypeOf?Object.setPrototypeOf(t,d):(t.__proto__=d,l(t,f,"GeneratorFunction")),t.prototype=Object.create(w),t},t.awrap=function(t){return{__await:t}},x(L.prototype),l(L.prototype,u,(function(){return this})),t.AsyncIterator=L,t.async=function(r,e,n,o,i){void 0===i&&(i=Promise);var a=new L(s(r,e,n,o),i);return t.isGeneratorFunction(e)?a:a.next().then((function(t){return t.done?t.value:a.next()}))},x(w),l(w,f,"Generator"),l(w,c,(function(){return this})),l(w,"toString",(function(){return"[object Generator]"})),t.keys=function(t){var r=Object(t),e=[];for(var n in r)e.push(n);return e.reverse(),function t(){for(;e.length;){var n=e.pop();if(n in r)return t.value=n,t.done=!1,t}return t.done=!0,t}},t.values=k,P.prototype={constructor:P,reset:function(t){if(this.prev=0,this.next=0,this.sent=this._sent=void 0,this.done=!1,this.delegate=null,this.method="next",this.arg=void 0,this.tryEntries.forEach(j),!t)for(var r in this)"t"===r.charAt(0)&&o.call(this,r)&&!isNaN(+r.slice(1))&&(this[r]=void 0)},stop:function(){this.done=!0;var t=this.tryEntries[0].completion;if("throw"===t.type)throw t.arg;return this.rval},dispatchException:function(t){if(this.done)throw t;var r=this;function e(e,n){return a.type="throw",a.arg=t,r.next=e,n&&(r.method="next",r.arg=void 0),!!n}for(var n=this.tryEntries.length-1;n>=0;--n){var i=this.tryEntries[n],a=i.completion;if("root"===i.tryLoc)return e("end");if(i.tryLoc<=this.prev){var c=o.call(i,"catchLoc"),u=o.call(i,"finallyLoc");if(c&&u){if(this.prev<i.catchLoc)return e(i.catchLoc,!0);if(this.prev<i.finallyLoc)return e(i.finallyLoc)}else if(c){if(this.prev<i.catchLoc)return e(i.catchLoc,!0)}else{if(!u)throw new Error("try statement without catch or finally");if(this.prev<i.finallyLoc)return e(i.finallyLoc)}}}},abrupt:function(t,r){for(var e=this.tryEntries.length-1;e>=0;--e){var n=this.tryEntries[e];if(n.tryLoc<=this.prev&&o.call(n,"finallyLoc")&&this.prev<n.finallyLoc){var i=n;break}}i&&("break"===t||"continue"===t)&&i.tryLoc<=r&&r<=i.finallyLoc&&(i=null);var a=i?i.completion:{};return a.type=t,a.arg=r,i?(this.method="next",this.next=i.finallyLoc,p):this.complete(a)},complete:function(t,r){if("throw"===t.type)throw t.arg;return"break"===t.type||"continue"===t.type?this.next=t.arg:"return"===t.type?(this.rval=this.arg=t.arg,this.method="return",this.next="end"):"normal"===t.type&&r&&(this.next=r),p},finish:function(t){for(var r=this.tryEntries.length-1;r>=0;--r){var e=this.tryEntries[r];if(e.finallyLoc===t)return this.complete(e.completion,e.afterLoc),j(e),p}},catch:function(t){for(var r=this.tryEntries.length-1;r>=0;--r){var e=this.tryEntries[r];if(e.tryLoc===t){var n=e.completion;if("throw"===n.type){var o=n.arg;j(e)}return o}}throw new Error("illegal catch attempt")},delegateYield:function(t,r,e){return this.delegate={iterator:k(t),resultName:r,nextLoc:e},"next"===this.method&&(this.arg=void 0),p}},t}function n(t,r,e,n,o,i,a){try{var c=t[i](a),u=c.value}catch(t){return void e(t)}c.done?r(u):Promise.resolve(u).then(n,o)}function o(t){return function(){var r=this,e=arguments;return new Promise((function(o,i){var a=t.apply(r,e);function c(t){n(a,o,i,c,u,"next",t)}function u(t){n(a,o,i,c,u,"throw",t)}c(void 0)}))}}var i=function(t){return new Promise((function(r,e){var n=new FileReader;n.onload=function(){r(n.result)},n.onerror=function(t){var r=t.target.error.code;e(Error("File could not be read! Code=".concat(r)))},n.readAsArrayBuffer(t)}))},a=function(){var t=o(e().mark((function t(r){var n,c,u;return e().wrap((function(t){for(;;)switch(t.prev=t.next){case 0:if(n=r,void 0!==r){t.next=3;break}return t.abrupt("return","undefined");case 3:if("string"!=typeof r){t.next=16;break}if(!/data:image\/([a-zA-Z]*);base64,([^"]*)/.test(r)){t.next=8;break}n=atob(r.split(",")[1]).split("").map((function(t){return t.charCodeAt(0)})),t.next=14;break;case 8:return t.next=10,fetch(r);case 10:return c=t.sent,t.next=13,c.arrayBuffer();case 13:n=t.sent;case 14:t.next=43;break;case 16:if(!("undefined"!=typeof HTMLElement&&r instanceof HTMLElement)){t.next=30;break}if("IMG"!==r.tagName){t.next=21;break}return t.next=20,a(r.src);case 20:n=t.sent;case 21:if("VIDEO"!==r.tagName){t.next=25;break}return t.next=24,a(r.poster);case 24:n=t.sent;case 25:if("CANVAS"!==r.tagName){t.next=28;break}return t.next=28,new Promise((function(t){r.toBlob(function(){var r=o(e().mark((function r(o){return e().wrap((function(r){for(;;)switch(r.prev=r.next){case 0:return r.next=2,i(o);case 2:n=r.sent,t();case 4:case"end":return r.stop()}}),r)})));return function(t){return r.apply(this,arguments)}}())}));case 28:t.next=43;break;case 30:if(!("undefined"!=typeof OffscreenCanvas&&r instanceof OffscreenCanvas)){t.next=39;break}return t.next=33,r.convertToBlob();case 33:return u=t.sent,t.next=36,i(u);case 36:n=t.sent,t.next=43;break;case 39:if(!(r instanceof File||r instanceof Blob)){t.next=43;break}return t.next=42,i(r);case 42:n=t.sent;case 43:return t.abrupt("return",new Uint8Array(n));case 44:case"end":return t.stop()}}),t)})));return function(r){return t.apply(this,arguments)}}();t.exports=a},202:t=>{t.exports=function(t,r){t.onmessage=function(t){var e=t.data;r(e)}}},772:t=>{function r(t){return r="function"==typeof Symbol&&"symbol"==typeof Symbol.iterator?function(t){return typeof t}:function(t){return t&&"function"==typeof Symbol&&t.constructor===Symbol&&t!==Symbol.prototype?"symbol":typeof t},r(t)}function e(){"use strict";e=function(){return t};var t={},n=Object.prototype,o=n.hasOwnProperty,i=Object.defineProperty||function(t,r,e){t[r]=e.value},a="function"==typeof Symbol?Symbol:{},c=a.iterator||"@@iterator",u=a.asyncIterator||"@@asyncIterator",f=a.toStringTag||"@@toStringTag";function l(t,r,e){return Object.defineProperty(t,r,{value:e,enumerable:!0,configurable:!0,writable:!0}),t[r]}try{l({},"")}catch(t){l=function(t,r,e){return t[r]=e}}function s(t,r,e,n){var o=r&&r.prototype instanceof y?r:y,a=Object.create(o.prototype),c=new P(n||[]);return i(a,"_invoke",{value:O(t,e,c)}),a}function h(t,r,e){try{return{type:"normal",arg:t.call(r,e)}}catch(t){return{type:"throw",arg:t}}}t.wrap=s;var p={};function y(){}function v(){}function d(){}var g={};l(g,c,(function(){return this}));var m=Object.getPrototypeOf,b=m&&m(m(k([])));b&&b!==n&&o.call(b,c)&&(g=b);var w=d.prototype=y.prototype=Object.create(g);function x(t){["next","throw","return"].forEach((function(r){l(t,r,(function(t){return this._invoke(r,t)}))}))}function L(t,e){function n(i,a,c,u){var f=h(t[i],t,a);if("throw"!==f.type){var l=f.arg,s=l.value;return s&&"object"==r(s)&&o.call(s,"__await")?e.resolve(s.__await).then((function(t){n("next",t,c,u)}),(function(t){n("throw",t,c,u)})):e.resolve(s).then((function(t){l.value=t,c(l)}),(function(t){return n("throw",t,c,u)}))}u(f.arg)}var a;i(this,"_invoke",{value:function(t,r){function o(){return new e((function(e,o){n(t,r,e,o)}))}return a=a?a.then(o,o):o()}})}function O(t,r,e){var n="suspendedStart";return function(o,i){if("executing"===n)throw new Error("Generator is already running");if("completed"===n){if("throw"===o)throw i;return{value:void 0,done:!0}}for(e.method=o,e.arg=i;;){var a=e.delegate;if(a){var c=E(a,e);if(c){if(c===p)continue;return c}}if("next"===e.method)e.sent=e._sent=e.arg;else if("throw"===e.method){if("suspendedStart"===n)throw n="completed",e.arg;e.dispatchException(e.arg)}else"return"===e.method&&e.abrupt("return",e.arg);n="executing";var u=h(t,r,e);if("normal"===u.type){if(n=e.done?"completed":"suspendedYield",u.arg===p)continue;return{value:u.arg,done:e.done}}"throw"===u.type&&(n="completed",e.method="throw",e.arg=u.arg)}}}function E(t,r){var e=r.method,n=t.iterator[e];if(void 0===n)return r.delegate=null,"throw"===e&&t.iterator.return&&(r.method="return",r.arg=void 0,E(t,r),"throw"===r.method)||"return"!==e&&(r.method="throw",r.arg=new TypeError("The iterator does not provide a '"+e+"' method")),p;var o=h(n,t.iterator,r.arg);if("throw"===o.type)return r.method="throw",r.arg=o.arg,r.delegate=null,p;var i=o.arg;return i?i.done?(r[t.resultName]=i.value,r.next=t.nextLoc,"return"!==r.method&&(r.method="next",r.arg=void 0),r.delegate=null,p):i:(r.method="throw",r.arg=new TypeError("iterator result is not an object"),r.delegate=null,p)}function S(t){var r={tryLoc:t[0]};1 in t&&(r.catchLoc=t[1]),2 in t&&(r.finallyLoc=t[2],r.afterLoc=t[3]),this.tryEntries.push(r)}function j(t){var r=t.completion||{};r.type="normal",delete r.arg,t.completion=r}function P(t){this.tryEntries=[{tryLoc:"root"}],t.forEach(S,this),this.reset(!0)}function k(t){if(t){var r=t[c];if(r)return r.call(t);if("function"==typeof t.next)return t;if(!isNaN(t.length)){var e=-1,n=function r(){for(;++e<t.length;)if(o.call(t,e))return r.value=t[e],r.done=!1,r;return r.value=void 0,r.done=!0,r};return n.next=n}}return{next:_}}function _(){return{value:void 0,done:!0}}return v.prototype=d,i(w,"constructor",{value:d,configurable:!0}),i(d,"constructor",{value:v,configurable:!0}),v.displayName=l(d,f,"GeneratorFunction"),t.isGeneratorFunction=function(t){var r="function"==typeof t&&t.constructor;return!!r&&(r===v||"GeneratorFunction"===(r.displayName||r.name))},t.mark=function(t){return Object.setPrototypeOf?Object.setPrototypeOf(t,d):(t.__proto__=d,l(t,f,"GeneratorFunction")),t.prototype=Object.create(w),t},t.awrap=function(t){return{__await:t}},x(L.prototype),l(L.prototype,u,(function(){return this})),t.AsyncIterator=L,t.async=function(r,e,n,o,i){void 0===i&&(i=Promise);var a=new L(s(r,e,n,o),i);return t.isGeneratorFunction(e)?a:a.next().then((function(t){return t.done?t.value:a.next()}))},x(w),l(w,f,"Generator"),l(w,c,(function(){return this})),l(w,"toString",(function(){return"[object Generator]"})),t.keys=function(t){var r=Object(t),e=[];for(var n in r)e.push(n);return e.reverse(),function t(){for(;e.length;){var n=e.pop();if(n in r)return t.value=n,t.done=!1,t}return t.done=!0,t}},t.values=k,P.prototype={constructor:P,reset:function(t){if(this.prev=0,this.next=0,this.sent=this._sent=void 0,this.done=!1,this.delegate=null,this.method="next",this.arg=void 0,this.tryEntries.forEach(j),!t)for(var r in this)"t"===r.charAt(0)&&o.call(this,r)&&!isNaN(+r.slice(1))&&(this[r]=void 0)},stop:function(){this.done=!0;var t=this.tryEntries[0].completion;if("throw"===t.type)throw t.arg;return this.rval},dispatchException:function(t){if(this.done)throw t;var r=this;function e(e,n){return a.type="throw",a.arg=t,r.next=e,n&&(r.method="next",r.arg=void 0),!!n}for(var n=this.tryEntries.length-1;n>=0;--n){var i=this.tryEntries[n],a=i.completion;if("root"===i.tryLoc)return e("end");if(i.tryLoc<=this.prev){var c=o.call(i,"catchLoc"),u=o.call(i,"finallyLoc");if(c&&u){if(this.prev<i.catchLoc)return e(i.catchLoc,!0);if(this.prev<i.finallyLoc)return e(i.finallyLoc)}else if(c){if(this.prev<i.catchLoc)return e(i.catchLoc,!0)}else{if(!u)throw new Error("try statement without catch or finally");if(this.prev<i.finallyLoc)return e(i.finallyLoc)}}}},abrupt:function(t,r){for(var e=this.tryEntries.length-1;e>=0;--e){var n=this.tryEntries[e];if(n.tryLoc<=this.prev&&o.call(n,"finallyLoc")&&this.prev<n.finallyLoc){var i=n;break}}i&&("break"===t||"continue"===t)&&i.tryLoc<=r&&r<=i.finallyLoc&&(i=null);var a=i?i.completion:{};return a.type=t,a.arg=r,i?(this.method="next",this.next=i.finallyLoc,p):this.complete(a)},complete:function(t,r){if("throw"===t.type)throw t.arg;return"break"===t.type||"continue"===t.type?this.next=t.arg:"return"===t.type?(this.rval=this.arg=t.arg,this.method="return",this.next="end"):"normal"===t.type&&r&&(this.next=r),p},finish:function(t){for(var r=this.tryEntries.length-1;r>=0;--r){var e=this.tryEntries[r];if(e.finallyLoc===t)return this.complete(e.completion,e.afterLoc),j(e),p}},catch:function(t){for(var r=this.tryEntries.length-1;r>=0;--r){var e=this.tryEntries[r];if(e.tryLoc===t){var n=e.completion;if("throw"===n.type){var o=n.arg;j(e)}return o}}throw new Error("illegal catch attempt")},delegateYield:function(t,r,e){return this.delegate={iterator:k(t),resultName:r,nextLoc:e},"next"===this.method&&(this.arg=void 0),p}},t}function n(t,r,e,n,o,i,a){try{var c=t[i](a),u=c.value}catch(t){return void e(t)}c.done?r(u):Promise.resolve(u).then(n,o)}t.exports=function(){var t,r=(t=e().mark((function t(r,n){return e().wrap((function(t){for(;;)switch(t.prev=t.next){case 0:r.postMessage(n);case 1:case"end":return t.stop()}}),t)})),function(){var r=this,e=arguments;return new Promise((function(o,i){var a=t.apply(r,e);function c(t){n(a,o,i,c,u,"next",t)}function u(t){n(a,o,i,c,u,"throw",t)}c(void 0)}))});return function(t,e){return r.apply(this,arguments)}}()},676:t=>{t.exports=function(t){var r,e=t.workerPath,n=t.workerBlobURL;if(Blob&&URL&&n){var o=new Blob(['importScripts("'.concat(e,'");')],{type:"application/javascript"});r=new Worker(URL.createObjectURL(o))}else r=new Worker(e);return r}},100:t=>{t.exports=function(t){t.terminate()}},147:t=>{"use strict";t.exports={i8:"5.1.1"}}},r={};function e(n){var o=r[n];if(void 0!==o)return o.exports;var i=r[n]={id:n,loaded:!1,exports:{}};return t[n].call(i.exports,i,i.exports,e),i.loaded=!0,i.exports}return e.nmd=t=>(t.paths=[],t.children||(t.children=[]),t),e(352)})()));
+</script>
+<script>// กติกาอ่าน SKU: แก้ตัวอักษรหน้าตาคล้ายกันตามตำแหน่ง โหวตจากการอ่านหลายรอบ แล้วเทียบกับฐานสินค้า
+(function (root) {
+  const TO_DIGIT = { O: '0', Q: '0', D: '0', I: '1', L: '1', T: '1', J: '1', Z: '2', S: '5', B: '8', G: '6' };
+  const TO_LETTER = { 0: 'O', 1: 'I', 2: 'Z', 5: 'S', 8: 'B', 6: 'G' };
+  const SIZE_RE = /^(XS|S|M|L|XL|[2-9]L|[2-9]XL|F|FREE)$/;
+  const DOC_SIZE_RE = /^(XS|S|M|L|XL|[2-9]XL|[2-9]L)$/;
+  const SURE_SHARE = 0.8;
+  // รหัสในออเดอร์ WARRIX บางรุ่นไม่เหมือนรหัสในฐาน
+  const MODEL_ALIAS = { PLA024: '3324', PLAN15: '3315N', FBA009: '1509' };
+  // ตัวที่ OCR สับสนกันบ่อย ใช้เทียบรหัสแบบไม่สนความต่างของตัวคล้าย
+  const LOOK = { O: '0', Q: '0', D: '0', I: '1', L: '1', T: '1', Z: '2', S: '5', 9: '5', B: '8', G: '6' };
+  const looks = s => String(s || '').split('').map(c => LOOK[c] || c).join('');
+  // เลขสีในใบสั่ง -> ชื่อสีไทยในฐาน (สีใหม่ที่ผู้ใช้เลือก โปรแกรมจะจำเพิ่มเอง)
+  const COLOR_SEED = {
+    '0100': 'กรม', '0132': 'กรมชมพู', '0200': 'น้ำเงิน', '1000': 'ดำ', '1003': 'ดำฟ้า', '1011': 'ดำเทา', '1080': 'นิล', '1100': 'เทา',
+    '2000': 'ขาว', '3000': 'แดง', '3010': 'แดงดำ', '3200': 'ชมพู', '3300': 'ส้ม', '4000': 'เหลือง', '5000': 'เขียว', '5400': 'เขียวเข้ม',
+    // เลขสีที่ชื่อในฐานต่างจากรุ่นอื่น เขียนแบบ รุ่น:เลขสี
+    '020250:3200': 'ฮอตพิงค์',
+    // EGO: TT ใช้เลขสีร่วมกันทุกรุ่น ส่วน EG แยกตามรุ่น
+    'TT:46': 'น้ำไหล', 'TT:053': 'ดำเขม่า', 'TT:66': 'ดอกทับทิม', 'TT:131': 'ม่วงเม็ดมะปราง', 'TT:133': 'ขาวผ่องคราม', 'TT:138': 'เขียวใบแค',
+    'EG1022:004': 'เหลืองจัน', 'EG1024:004': 'เหลืองจัน', 'EG5184:055': 'เหลืองทอง', 'EG6202:07': 'ขาว',
+    // ฐานมีสองชื่อ (WH, BK) ผู้ใช้เลือกใช้ชื่อไทยเป็นหลัก
+    'EG6197:074': 'ขาว สโนว์', 'EG9011A:01': 'ดำ',
+  };
+  // เลขไซซ์ที่ซ่อนในรหัส EGO
+  const EGO_SIZE = { 1: 'XL', 2: 'L', 3: 'M', 4: '3L', 5: '2L', 8: 'SS' };
+  // สีเดียวกันแต่ฐานมี SKU สองชื่อ ใช้ค่าตามใบก่อนและเตือนจนกว่าผู้ใช้จะเลือก
+  const EGO_TWIN = {};
+  const digit = c => TO_DIGIT[c] || c;
+  const letter = c => TO_LETTER[c] || c;
+  const norm = s => String(s || '').trim().toUpperCase();
+  const colorKey = s => String(s || '').replace(/[\s-]/g, '');
+  const isThai = s => /[฀-๿]/.test(String(s || ''));
+
+  // รุ่นยาว เช่น 262JKACL70 = เลข 3 ตัว + อักษร + เลข 2 ตัว
+  // รุ่นสั้น เช่น PLA024, PLAN15 = อักษร 3 ตัว + ตัวกลาง + เลข 2 ตัว
+  function fixModel(m) {
+    const c = m.split('');
+    if (c.length >= 9) {
+      return c.map((x, i) => (i < 3 || i >= c.length - 2) ? digit(x) : letter(x)).join('');
+    }
+    if (c.length === 6) {
+      return c.map((x, i) => {
+        if (i < 3) return letter(x);
+        if (i >= 4) return digit(x);
+        return 'ODQ'.includes(x) ? '0' : letter(x);
+      }).join('');
+    }
+    return m;
+  }
+
+  function fixSize(s) {
+    if (SIZE_RE.test(s)) return s;
+    return s.length === 2 && s[1] === 'L' ? digit(s[0]) + 'L' : s;
+  }
+
+  function parseSku(raw) {
+    const s = String(raw || '').toUpperCase().replace(/[^A-Z0-9-]/g, '');
+    const m = s.match(/W[A-Z]-[A-Z0-9]{4,}-[A-Z0-9]{1,3}-[A-Z0-9]{1,4}$/);
+    if (!m) return null;
+    const [prefix, model, color, size] = m[0].split('-');
+    return { prefix, model: fixModel(model), color, size: fixSize(size) };
+  }
+
+  function rank(values) {
+    const n = new Map();
+    values.forEach(v => n.set(v, (n.get(v) || 0) + 1));
+    return [...n.entries()].sort((a, b) => b[1] - a[1]);
+  }
+
+  function top(values) {
+    const r = rank(values);
+    if (!r.length) return { value: '', share: 0, tied: false };
+    return { value: r[0][0], share: r[0][1] / values.length, tied: r.length > 1 && r[0][1] === r[1][1] };
+  }
+
+  function voteSku(reads) {
+    const parsed = reads.map(parseSku).filter(Boolean);
+    if (!parsed.length) return { sku: '', sure: false, reads: 0, share: 0, alts: [], ranked: [] };
+    const parts = ['prefix', 'model', 'color', 'size'].map(k => top(parsed.map(p => p[k])));
+    const share = Math.min(...parts.map(p => p.share));
+    const sku = parts.map(p => p.value).join('-');
+    // รหัสสีไม่มีรูปแบบให้แก้ตัวคล้าย (เช่น R9/RS/R3) จึงต้องอ่านตรงกันทุกรอบ
+    const sure = parsed.length >= 3 && share >= SURE_SHARE && parts[2].share === 1 && !parts.some(p => p.tied) && SIZE_RE.test(parts[3].value);
+    const whole = rank(parsed.map(p => [p.prefix, p.model, p.color, p.size].join('-')));
+    const alts = [sku, ...whole.map(x => x[0]).filter(x => x !== sku)].slice(0, 4);
+    return { sku, sure, reads: parsed.length, share, alts, ranked: whole.map(([s, count]) => ({ sku: s, count })) };
+  }
+
+  function voteQty(reads) {
+    const clean = reads.map(r => String(r || '').replace(/\D/g, '')).filter(Boolean);
+    if (!clean.length) return { qty: '', sure: false };
+    const t = top(clean);
+    return { qty: t.value, sure: clean.length === reads.length && t.share === 1 };
+  }
+
+  function makeCatalog(list) {
+    const map = new Map(), colors = new Map(), models = new Map();
+    for (const raw of list) {
+      const sku = String(raw || '').trim();
+      if (!sku) continue;
+      const up = norm(sku);
+      if (!map.has(up)) map.set(up, sku);
+      const w = up.match(/^(W[A-Z])-([A-Z0-9]+)-/);
+      if (w) {
+        if (!models.has(w[1])) models.set(w[1], new Set());
+        models.get(w[1]).add(w[2]);
+      }
+      const m = sku.match(/^(\d{6}|TT\d{3}|EG\d{4}[A-Z]?)-(.+)-([^-]+)$/);
+      if (m) {
+        if (!colors.has(m[1])) colors.set(m[1], new Set());
+        colors.get(m[1]).add(m[2]);
+      }
+    }
+    return { size: map.size, map, colors, models, has: s => map.has(norm(s)), get: s => map.get(norm(s)) || '' };
+  }
+
+  function distance(a, b, max) {
+    if (Math.abs(a.length - b.length) > max) return max + 1;
+    let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+    for (let i = 1; i <= a.length; i++) {
+      const cur = [i];
+      let low = i;
+      for (let j = 1; j <= b.length; j++) {
+        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+        if (cur[j] < low) low = cur[j];
+      }
+      if (low > max) return max + 1;
+      prev = cur;
+    }
+    return prev[b.length];
+  }
+
+  function nearest(sku, cat, max) {
+    const key = norm(sku);
+    if (!key) return [];
+    const hits = [];
+    for (const [up, original] of cat.map) {
+      if (up[0] !== key[0] || up[1] !== key[1]) continue;
+      const d = distance(key, up, max);
+      if (d <= max) hits.push({ sku: original, d });
+    }
+    hits.sort((a, b) => a.d - b.d);
+    const best = hits.length ? hits[0].d : 0;
+    return hits.filter(x => x.d === best).slice(0, 4).map(x => x.sku);
+  }
+
+  // ชื่อสินค้ามักมีรหัสที่ตรงฐาน เช่น รหัส WP-FBA009 แต่ชื่อเขียน WP-1509-น้ำเงิน-B9-M
+  function modelFromName(texts, prefix, cat) {
+    const known = cat.models.get(prefix);
+    if (!known) return { model: '', count: 0 };
+    const short = [...known].filter(m => m.length <= 5);
+    const counts = new Map();
+    texts.forEach(text => {
+      const re = /W[A-Z]-([A-Z0-9]{4,5})(?![A-Z0-9])/g;
+      const up = String(text || '').toUpperCase();
+      let m;
+      const seen = new Set();
+      while ((m = re.exec(up))) {
+        const hits = short.filter(k => looks(k) === looks(m[1]));
+        if (hits.length === 1 && !seen.has(hits[0])) {
+          seen.add(hits[0]);
+          counts.set(hits[0], (counts.get(hits[0]) || 0) + 1);
+        }
+      }
+    });
+    const best = [...counts].sort((a, b) => b[1] - a[1]);
+    return best.length ? { model: best[0][0], count: best[0][1] } : { model: '', count: 0 };
+  }
+
+  function aliasSku(sku, cat, fromName) {
+    const p = String(sku || '').split('-');
+    const known = cat.models.get(p[0]);
+    if (p.length < 2 || (known && known.has(p[1]))) return p.join('-');
+    const key = Object.keys(MODEL_ALIAS).find(k => looks(k) === looks(p[1]));
+    if (key) p[1] = MODEL_ALIAS[key];
+    else if (fromName.model) p[1] = fromName.model;
+    return p.join('-');
+  }
+
+  function resolveWarrix(vote, cat, nameTexts) {
+    const prefix = String(vote.sku || '').split('-')[0];
+    const fromName = modelFromName(nameTexts || [], prefix, cat);
+    const merged = new Map();
+    vote.ranked.forEach(x => { const s = aliasSku(x.sku, cat, fromName); merged.set(s, (merged.get(s) || 0) + x.count); });
+    const ranked = [...merged].map(([sku, count]) => ({ sku, count })).sort((a, b) => b.count - a.count);
+    const voted = aliasSku(vote.sku, cat, fromName);
+    const valid = ranked.filter(x => cat.has(x.sku));
+    if (!valid.length) {
+      // ไม่เปลี่ยนเป็น SKU ใกล้เคียงให้เอง เพราะอาจเป็นคนละไซซ์ ให้ผู้ใช้กดเลือกแทน
+      const near = nearest(voted, cat, 2);
+      return { sku: voted, sure: false, alts: [voted, ...near.filter(x => x !== voted)].slice(0, 4) };
+    }
+    const first = valid[0], second = valid[1];
+    const sure = first.count >= 2 && (!second || first.count >= second.count * 2);
+    const sku = cat.get(first.sku);
+    return { sku, sure, alts: [sku, ...valid.slice(1).map(x => cat.get(x.sku))].slice(0, 4) };
+  }
+
+  function matchColor(model, name, cat) {
+    const options = cat.colors.get(model);
+    if (!options || !name) return '';
+    const key = colorKey(name);
+    return [...options].find(x => colorKey(x) === key) || '';
+  }
+
+  function parseDocSize(raw) {
+    let s = String(raw || '').toUpperCase().replace(/[^XSML0-9]/g, '');
+    if (s === '5') s = 'S';
+    if (s === 'X5') s = 'XS';
+    // ไซซ์เอียงอย่าง 2XL มักอ่านได้แค่ตัวเลข และฐานของใบสั่งนี้ใช้แบบ nXL เท่านั้น
+    if (/^[2-9]X?L?$/.test(s)) s = `${s[0]}XL`;
+    return DOC_SIZE_RE.test(s) ? s : '';
+  }
+
+  function resolveDoc(input, colorMap, cat) {
+    const models = input.modelReads.map(x => String(x).replace(/\D/g, '')).filter(x => x.length === 6);
+    const m = top(models);
+    let model = m.value;
+    let modelOk = m.share >= 0.6 && cat.colors.has(model);
+    if (model && !cat.colors.has(model)) {
+      const close = [...cat.colors.keys()].filter(k => distance(k, model, 1) === 1);
+      if (close.length === 1) model = close[0];
+      modelOk = false;
+    }
+    const codes = input.colorReads.map(x => String(x).replace(/\D/g, '')).filter(x => x.length === 4);
+    const c = top(codes);
+    const colorName = matchColor(model, colorMap[`${model}:${c.value}`] || colorMap[c.value], cat);
+    const size = input.size || '';
+    const built = colorName && size ? `${model}-${colorName}-${size}` : [model, c.value, size].filter(Boolean).join('-');
+    const found = cat.has(built);
+    return {
+      sku: found ? cat.get(built) : built,
+      sure: modelOk && c.share >= 0.75 && !c.tied && found,
+      model, colorCode: c.value, colorName, size,
+      options: [...(cat.colors.get(model) || [])].sort((a, b) => a.localeCompare(b, 'th')),
+    };
+  }
+
+  // PEGAN: ในภาพเขียน 16-25085 NV 5L แต่ในฐานเป็น 1625085-NV-5L
+  function parsePegan(raw) {
+    const s = String(raw || '').toUpperCase().replace(/\s/g, '').replace(/[^A-Z0-9/-]/g, '');
+    const m = s.match(/^([0-9A-Z]{2})-?([0-9A-Z]{5})([A-Z0-9]{2})(?:[/I1L]([A-Z0-9]{2}))?((?:[2-9]|Z)?(?:XS|SS|XL|S|M|L))$/);
+    if (!m) return '';
+    const code = (m[1] + m[2]).split('').map(digit).join('');
+    if (!/^\d{7}$/.test(code)) return '';
+    const fix = x => x.split('').map(letter).join('');
+    const color = m[4] ? `${fix(m[3])}/${fix(m[4])}` : fix(m[3]);
+    return `${code}-${color}-${m[5].replace(/^Z/, '2')}`;
+  }
+
+  function resolvePegan(reads, cat) {
+    const parsed = reads.map(parsePegan).filter(Boolean);
+    if (!parsed.length) return { sku: '', sure: false, alts: [] };
+    const ranked = rank(parsed);
+    const valid = ranked.filter(([s]) => cat.has(s));
+    const list = ranked.map(x => cat.get(x[0]) || x[0]);
+    // ถ้าอ่านส่วนใหญ่เป็น SKU ที่ไม่มีในฐาน ต้องคงค่านั้นไว้ ห้ามเลื่อนไปไซซ์ที่มีในฐาน
+    if (!valid.length || (!cat.has(ranked[0][0]) && ranked[0][1] > valid[0][1])) {
+      return { sku: ranked[0][0], sure: false, alts: list.slice(0, 4) };
+    }
+    const sku = cat.get(valid[0][0]);
+    const sure = valid[0][1] >= 2 && (!valid[1] || valid[0][1] >= valid[1][1] * 2) && ranked[0][1] === valid[0][1];
+    return { sku, sure, alts: [sku, ...list.filter(x => x !== sku)].slice(0, 4) };
+  }
+
+  // EGO: TT50013133 = TT001 ไซซ์ 3 สี 133, 05102212004 = EG1022 ไซซ์ 2 สี 004, 069011A501 = EG9011A ไซซ์ 5 สี 01
+  function parseEgoCode(raw) {
+    const s = String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    // ตัว TT ติดกันมักถูกอ่านเป็น T1 หรือ 11
+    if (/^[T1IL7]{2}/.test(s)) {
+      const m = s.slice(2).split('').map(digit).join('').match(/^50(\d{2})(\d)(\d{2,3})$/);
+      if (m) return { model: `TT0${m[1]}`, sizeDigit: m[2], colorCode: m[3] };
+    }
+    const d = s.split('').map(c => c === 'A' ? c : digit(c)).join('');
+    const eg = d.match(/^05(\d{4})\d(\d)(\d{2,3})$/) || d.match(/^06(\d{4}A)(\d)(\d{2,3})$/);
+    return eg ? { model: `EG${eg[1]}`, sizeDigit: eg[2], colorCode: eg[3] } : null;
+  }
+
+  function descSize(text) {
+    const m = String(text || '').toUpperCase().replace(/\s/g, '').match(/\((SS|XS|S|M|L|XL|[2-9]L)\)/);
+    return m ? m[1] : '';
+  }
+
+  // ซ่อนสีอังกฤษเฉพาะเมื่อไซซ์เดียวกันมี SKU ไทยในฐานแล้ว (BL ไม่รวม เพราะอาจเป็นน้ำเงินหรือฟ้า)
+  const EN_FAMILY = { BK: 'ดำ', NV: 'กรม', WH: 'ขาว', RD: 'แดง' };
+  function egoOptions(model, size, cat) {
+    const all = [...(cat.colors.get(model) || [])];
+    const thai = all.filter(isThai);
+    return all.filter(c => {
+      if (isThai(c)) return true;
+      const family = EN_FAMILY[c];
+      return !(family && size && thai.some(t => t.startsWith(family) && cat.has(`${model}-${t}-${size}`)));
+    }).sort((a, b) => a.localeCompare(b, 'th'));
+  }
+
+  function resolveEgo(codeReads, descReads, colorMap, cat) {
+    const parsed = codeReads.map(parseEgoCode).filter(Boolean);
+    if (!parsed.length) return null;
+    const t = top(parsed.map(p => `${p.model}|${p.sizeDigit}|${p.colorCode}`));
+    const [model, sizeDigit, colorCode] = t.value.split('|');
+    const fromDesc = top(descReads.map(descSize).filter(Boolean)).value;
+    const size = EGO_SIZE[sizeDigit] || fromDesc;
+    const key = `${model}:${colorCode}`;
+    const learned = colorMap[key];
+    const twin = EGO_TWIN[key];
+    const family = model.startsWith('TT') ? `TT:${colorCode}` : key;
+    // ยึดตามฐาน: ใช้สีไทยเมื่อไซซ์นั้นมีในฐาน ถ้าฐานมีแต่ชื่ออังกฤษจึงใช้ชื่อนั้น
+    const options = egoOptions(model, size, cat);
+    const colorName = [learned, twin && twin[0], COLOR_SEED[key], COLOR_SEED[family]]
+      .map(c => matchColor(model, c, cat)).find(c => c && options.includes(c)) || '';
+    const built = colorName && size ? `${model}-${colorName}-${size}` : [model, colorCode, size].filter(Boolean).join('-');
+    const found = cat.has(built);
+    const sku = found ? cat.get(built) : built;
+    const other = !learned && twin && size ? cat.get(`${model}-${twin[1]}-${size}`) : '';
+    return {
+      sku,
+      sure: found && t.share >= 0.6 && !t.tied && !other && (!fromDesc || fromDesc === size),
+      alts: other ? [sku, other] : [sku],
+      meta: { model, colorCode, colorName, size, options },
+    };
+  }
+
+  function parseMoney(raw) {
+    const s = String(raw || '').replace(/[^\d.]/g, '');
+    if (!s) return null;
+    const m = s.match(/(\d+)\.(\d{1,2})/);
+    if (m) return parseFloat(`${m[1]}.${m[2]}`);
+    return s.length >= 3 ? parseInt(s, 10) / 100 : null;
+  }
+
+  function voteNumber(values) {
+    const clean = values.filter(v => v !== null && !isNaN(v));
+    return clean.length ? Number(top(clean.map(String)).value) : null;
+  }
+
+  const lineMatches = (qty, price, discount, amount) => Math.abs(qty * price * (1 - discount / 100) - amount) <= 0.02;
+
+  function qtyFromAmount(price, discount, amount) {
+    const unit = price * (1 - discount / 100);
+    if (!(unit > 0)) return null;
+    const q = Math.round(amount / unit);
+    return q >= 1 && lineMatches(q, price, discount, amount) ? q : null;
+  }
+
+  const api = { parseSku, voteSku, voteQty, makeCatalog, nearest, resolveWarrix, resolveDoc, matchColor, parseDocSize, isThai, parsePegan, resolvePegan, parseEgoCode, resolveEgo, parseMoney, voteNumber, lineMatches, qtyFromAmount, COLOR_SEED };
+  if (typeof module !== 'undefined') module.exports = api; else root.SkuCore = api;
+})(this);
+</script>
+<script>(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const SKU_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789- ';
+  const ROW_HEIGHT = 37.8; // ความสูงแถวของหน้าออเดอร์ที่ซูม 100%
+  const MIN_ZOOM = 0.9; // เล็กกว่านี้ตัวอักษรแตกจนเชื่อผลไม่ได้
+  const SCALES = [2, 3, 4, 5, 6];
+  const QTY_SCALES = [3, 4, 6];
+  let workerPromise = null;
+  let lastChars = null;
+  let pumping = false;
+  const DOC_SCALES = [3, 4, 5, 6];
+  const DOC_ROW = 53.44; // ความสูงแถวของใบสั่งในภาพกว้างปกติ
+  const DOC_CELL = 55; // ความกว้างช่องไซซ์
+  const COLOR_KEY = 'warrix-sku-reader.colors';
+  let groups = []; // หนึ่งกลุ่มต่อหนึ่งรูป: { state: wait | read | done | error, rows, footerReads, ... }
+  const DB = JSON.parse($('d-config').textContent);
+  let catalog = SkuCore.makeCatalog(decodeCatalog());
+  const colorMap = loadColors();
+  let catalogReady = Promise.resolve();
+
+  function decodeCatalog() {
+    const el = $('d-catalog');
+    const bin = atob(el.textContent.trim());
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    el.remove();
+    return new TextDecoder().decode(out).split('\n');
+  }
+
+  function loadColors() {
+    const base = Object.assign({}, SkuCore.COLOR_SEED);
+    try {
+      Object.assign(base, JSON.parse(localStorage.getItem(COLOR_KEY) || '{}'));
+    } catch (e) { /* ใช้ค่าเริ่มต้น */ }
+    return base;
+  }
+
+  // เลขสีเดียวกันอาจชื่อต่างกันในแต่ละรุ่น จึงจำแยกตามรุ่น
+  function saveColor(model, code, name) {
+    const key = `${model}:${code}`;
+    colorMap[key] = name;
+    try {
+      const saved = JSON.parse(localStorage.getItem(COLOR_KEY) || '{}');
+      saved[key] = name;
+      localStorage.setItem(COLOR_KEY, JSON.stringify(saved));
+    } catch (e) { /* จำไม่ได้ก็ยังใช้ต่อในรอบนี้ */ }
+  }
+
+  function setDbStatus(text, warn) {
+    $('db-status').textContent = text;
+    $('db-status').classList.toggle('warn', !!warn);
+  }
+
+  // โหลดฐานล่าสุด ถ้าไม่มีเน็ตหรือโหลดไม่ครบ จะใช้สำเนาในไฟล์ต่อ
+  async function refreshCatalog() {
+    // รุ่นสาธารณะไม่มีคีย์ฐาน จึงใช้รายการ SKU ที่ฝังในไฟล์เท่านั้น
+    if (!DB.key) {
+      if (DB.assets) {
+        setDbStatus('กำลังโหลดรายการ SKU');
+        try {
+          const r = await fetch('catalog.txt');
+          if (!r.ok) throw new Error(String(r.status));
+          catalog = SkuCore.makeCatalog((await r.text()).split('\n'));
+        } catch (e) {
+          setDbStatus('โหลดรายการ SKU ไม่สำเร็จ กรุณารีเฟรชหน้านี้', true);
+          return;
+        }
+      }
+      setDbStatus(`ฐาน SKU ${catalog.size.toLocaleString('en-US')} รายการ ข้อมูลวันที่ ${DB.date}`);
+      if (groups.length) paint();
+      return;
+    }
+    setDbStatus(`กำลังอัปเดตฐาน SKU (ตอนนี้มี ${catalog.size.toLocaleString('en-US')} รายการ)`);
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 20000);
+    const headers = { apikey: DB.key, Authorization: `Bearer ${DB.key}` };
+    const page = (offset, extra) => fetch(`${DB.url}/rest/v1/products?select=sku_merchant&order=id.asc&limit=1000&offset=${offset}`, { headers: Object.assign({}, headers, extra), signal: ctl.signal });
+    try {
+      const first = await page(0, { Prefer: 'count=exact' });
+      if (!first.ok) throw new Error(String(first.status));
+      const total = parseInt((first.headers.get('content-range') || '').split('/')[1], 10);
+      if (!total) throw new Error('no count');
+      const list = (await first.json()).map(r => r.sku_merchant);
+      const offsets = [];
+      for (let o = 1000; o < total; o += 1000) offsets.push(o);
+      const results = [];
+      await Promise.all([0, 1, 2, 3].map(async () => {
+        while (offsets.length) {
+          const o = offsets.shift();
+          const r = await page(o);
+          if (!r.ok) throw new Error(String(r.status));
+          results.push(await r.json());
+        }
+      }));
+      results.forEach(p => p.forEach(r => list.push(r.sku_merchant)));
+      if (list.length !== total) throw new Error('incomplete');
+      catalog = SkuCore.makeCatalog(list);
+      setDbStatus(`ฐาน SKU ล่าสุด ${catalog.size.toLocaleString('en-US')} รายการ`);
+      if (groups.length) paint();
+    } catch (e) {
+      setDbStatus(`ใช้ฐาน SKU สำรอง ${catalog.size.toLocaleString('en-US')} รายการ จากวันที่ ${DB.date} เพราะเชื่อมต่อฐานจริงไม่ได้`, true);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  function bytes(id) {
+    const el = $(id);
+    const bin = atob(el.textContent.trim());
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    el.remove();
+    return out;
+  }
+
+  function getWorker() {
+    if (!workerPromise) {
+      workerPromise = (async () => {
+        // ฝังข้อมูลภาษาไว้ในตัว worker: คำขอไปที่ LANG_URL ไม่ออกเน็ต แต่ตอบจากไฟล์นี้เอง
+        const LANG_URL = 'https://embedded.local/tessdata';
+        if (DB.assets) {
+          // รุ่นเว็บ: โหลดตัวอ่านจากไฟล์ข้าง ๆ หน้านี้ ไม่ส่งรูปออกไปไหน
+          const base = new URL('.', location.href).href;
+          const load = async n => { const r = await fetch(base + n); if (!r.ok) throw new Error(n); return r.arrayBuffer(); };
+          const [core, work] = await Promise.all([load('core.js'), load('worker.js')]);
+          const shim = `(function(){var p=${JSON.stringify(DB.assets.map(n => base + n))},f=self.fetch.bind(self);` +
+            `self.fetch=function(r,o){if(String(r).indexOf("${LANG_URL}")!==0)return f(r,o);` +
+            'return Promise.all(p.map(function(u){return f(u).then(function(x){if(!x.ok)throw new Error(u);return x.arrayBuffer()})}))' +
+            '.then(function(a){var n=a.reduce(function(s,b){return s+b.byteLength},0),t=new Uint8Array(n),i=0;' +
+            'a.forEach(function(b){t.set(new Uint8Array(b),i);i+=b.byteLength});return new Response(t)})}})();\n';
+          const webBlob = new Blob([core, '\n', shim, work], { type: 'text/javascript' });
+          return Tesseract.createWorker('eng', 1, {
+            workerPath: URL.createObjectURL(webBlob), workerBlobURL: false, corePath: 'embedded.js',
+            langPath: LANG_URL, cacheMethod: 'none', gzip: true,
+          }, { load_system_dawg: '0', load_freq_dawg: '0' });
+        }
+        const engEl = $('d-eng');
+        const eng = engEl.textContent.trim();
+        engEl.remove();
+        const shimHead = '(function(){var b=atob("';
+        const shimTail = '"),u=new Uint8Array(b.length);for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i);' +
+          'var f=self.fetch.bind(self);self.fetch=function(r,o){return String(r).indexOf("' + LANG_URL +
+          '")===0?Promise.resolve(new Response(u.slice())):f(r,o)}})();\n';
+        const blob = new Blob([bytes('d-core'), '\n', shimHead, eng, shimTail, bytes('d-worker')], { type: 'text/javascript' });
+        return Tesseract.createWorker('eng', 1, {
+          workerPath: URL.createObjectURL(blob), workerBlobURL: false, corePath: 'embedded.js',
+          langPath: LANG_URL, cacheMethod: 'none', gzip: true,
+        }, { load_system_dawg: '0', load_freq_dawg: '0' });
+      })();
+    }
+    return workerPromise;
+  }
+
+  // หาแถวจากปุ่มถังขยะสีแดง และหาช่องจำนวนจากกรอบ input
+  function detectLayout(canvas) {
+    const W = canvas.width, H = canvas.height;
+    const d = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, W, H).data;
+    const px = (x, y) => (y * W + x) * 4;
+    const isRed = (x, y) => { const i = px(x, y), r = d[i], g = d[i + 1], b = d[i + 2]; return r > 165 && g < 115 && b < 105 && r - g > 70; };
+    const lum = (x, y) => { const i = px(x, y); return d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114; };
+
+    let best = null;
+    const lim = Math.floor(W * 0.25);
+    for (let x = 0; x < lim; x++) {
+      const runs = [];
+      let start = -1, gap = 0;
+      for (let y = 0; y < H; y++) {
+        if (isRed(x, y)) { if (start < 0) start = y; gap = 0; }
+        else if (start >= 0 && ++gap > 12) { const end = y - gap; if (end - start >= 6 && end - start <= 60) runs.push((start + end) / 2); start = -1; gap = 0; }
+      }
+      if (!best || runs.length > best.runs.length) best = { x, runs };
+    }
+    if (!best || !best.runs.length) return null;
+    const coarse = best.runs.slice(1).map((y, i) => y - best.runs[i]).sort((a, b) => a - b);
+    const coarseGap = coarse.length ? coarse[Math.floor(coarse.length / 2)] : ROW_HEIGHT;
+    const k0 = coarseGap / ROW_HEIGHT;
+
+    // คอลัมน์เดียวอาจตัดผ่านลายถังขยะสีขาว จึงวัดทั้งปุ่มเพื่อให้ได้จุดกึ่งกลางจริง
+    const half = Math.ceil(14 * k0);
+    const bandL = Math.max(0, best.x - half), bandR = Math.min(W - 1, best.x + half);
+    const minCount = Math.max(3, 4 * k0), maxGap = Math.ceil(3 * k0);
+    const ys = [];
+    let minX = W, maxX = 0, runStart = -1, runEnd = -1;
+    const closeRun = () => {
+      const h = runEnd - runStart + 1;
+      if (runStart >= 0 && h >= 8 * k0 && h <= 28 * k0) {
+        ys.push((runStart + runEnd) / 2);
+        for (let y = runStart; y <= runEnd; y++) for (let x = bandL; x <= bandR; x++) if (isRed(x, y)) { if (x < minX) minX = x; if (x > maxX) maxX = x; }
+      }
+      runStart = -1;
+    };
+    for (let y = 0; y < H; y++) {
+      let n = 0;
+      for (let x = bandL; x <= bandR; x++) if (isRed(x, y)) n++;
+      if (n >= minCount) { if (runStart < 0) runStart = y; runEnd = y; }
+      else if (runStart >= 0 && y - runEnd > maxGap) closeRun();
+    }
+    closeRun();
+    if (!ys.length) return null;
+    const avgGap = ys.length > 1 ? (ys[ys.length - 1] - ys[0]) / (ys.length - 1) : coarseGap;
+    const spacing = Math.abs(avgGap - coarseGap) <= coarseGap * 0.05 ? avgGap : coarseGap;
+    const k = spacing / ROW_HEIGHT;
+    const btnX = (minX + maxX) / 2;
+
+    const reach = Math.max(3, Math.round(8 * k)); // สูงกว่าตัวเลขในช่อง เส้นตัวเลขจึงไม่ถูกนับเป็นกรอบ
+    const off = Math.max(2, Math.round(2 * k));
+    const profile = new Int32Array(W);
+    for (let x = Math.floor(W * 0.5); x < W - off; x++) {
+      for (const yc of ys) {
+        let hit = 0, total = 0;
+        for (let y = Math.round(yc - reach); y <= yc + reach; y++) {
+          if (y < 0 || y >= H) continue;
+          total++;
+          const v = lum(x, y);
+          if (v < lum(x - off, y) - 5 || v < lum(x + off, y) - 5) hit++;
+        }
+        if (total && hit / total >= 0.8) profile[x]++;
+      }
+    }
+    const peaks = [];
+    for (let x = 0; x < W; x++) {
+      if (profile[x] >= ys.length * 0.5) {
+        let e = x, top = profile[x];
+        while (e + 1 < W && profile[e + 1] >= ys.length * 0.5) { e++; top = Math.max(top, profile[e]); }
+        peaks.push({ x: (x + e) / 2, score: top });
+        x = e;
+      }
+    }
+    let box = null;
+    for (let i = 0; i < peaks.length; i++) for (let j = i + 1; j < peaks.length; j++) {
+      const w = peaks[j].x - peaks[i].x;
+      if (w >= 50 * k && w <= 85 * k) {
+        const score = peaks[i].score + peaks[j].score;
+        if (!box || score > box.score) box = { a: peaks[i].x, b: peaks[j].x, score };
+      }
+    }
+    if (!box) return null;
+    return { ys, k, btnX, qtyA: box.a, qtyB: box.b, W, H };
+  }
+
+  // ภาพใหญ่มาก (เช่น จอ 200%) เส้นกรอบจะฟุ้ง จึงย่อมาหาตำแหน่งก่อน แล้วอ่านจากภาพเต็ม
+  function detectLayoutAnySize(src) {
+    const direct = detectLayout(src);
+    if (direct || src.width < 1800) return direct;
+    const f = 1600 / src.width;
+    const c = document.createElement('canvas');
+    c.width = 1600;
+    c.height = Math.round(src.height * f);
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(src, 0, 0, c.width, c.height);
+    const s = detectLayout(c);
+    if (!s) return null;
+    return { ys: s.ys.map(y => y / f), k: s.k / f, btnX: s.btnX / f, qtyA: s.qtyA / f, qtyB: s.qtyB / f, W: src.width, H: src.height };
+  }
+
+  // ใบสั่งแบบพิมพ์: หาแถวจากเส้นคั่นแนวนอน และหาช่องไซซ์จากขีดแนวตั้ง
+  function detectDoc(canvas) {
+    const W = canvas.width, H = canvas.height;
+    const d = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, W, H).data;
+    const lum = (x, y) => { const i = (y * W + x) * 4; return d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114; };
+    const lines = [];
+    for (let y = 0; y < H; y++) {
+      let n = 0;
+      for (let x = 0; x < W; x += 2) if (lum(x, y) < 190) n++;
+      if (n * 2 > W * 0.6) {
+        const last = lines[lines.length - 1];
+        if (last && y - last.end <= 2) last.end = y; else lines.push({ start: y, end: y });
+      }
+    }
+    if (lines.length < 2) return null;
+    const columnCounts = (top, bottom) => {
+      const c = new Int32Array(W);
+      for (let x = 0; x < W; x++) for (let y = Math.max(0, top); y <= bottom; y++) if (lum(x, y) < 190) c[x]++;
+      return c;
+    };
+    const barChain = (counts, limit, cell, tol) => {
+      const peaks = [];
+      for (let x = 0; x < W; x++) {
+        if (counts[x] >= limit) {
+          let e = x;
+          while (e + 1 < W && counts[e + 1] >= limit) e++;
+          peaks.push((x + e) / 2);
+          x = e;
+        }
+      }
+      let best = [];
+      for (let i = 0; i < peaks.length; i++) {
+        const chain = [peaks[i]];
+        for (let j = i + 1; j < peaks.length; j++) {
+          const delta = peaks[j] - chain[chain.length - 1];
+          if (Math.abs(delta - cell) <= tol) chain.push(peaks[j]);
+          else if (delta > cell + tol) break;
+        }
+        if (chain.length > best.length) best = chain;
+      }
+      return best;
+    };
+    // แถวสินค้าคือช่วงระหว่างเส้นที่มีขีดช่องไซซ์เรียงห่างเท่ากัน หัวเอกสารจึงไม่ถูกนับ
+    const isItem = (top, bottom, cell) => barChain(columnCounts(top, bottom), (bottom - Math.max(0, top) + 1) * 0.2, cell, cell * 0.12).length >= 4;
+    const items = [];
+    for (let i = 0; i < lines.length - 1; i++) {
+      const top = lines[i].end + 1, bottom = lines[i + 1].start - 1, h = bottom - top + 1;
+      if (h < 28 || h > W * 0.2) continue;
+      const gap = (lines[i + 1].start + lines[i + 1].end) / 2 - (lines[i].start + lines[i].end) / 2;
+      if (isItem(top, bottom, gap * DOC_CELL / DOC_ROW)) items.push({ top, bottom, gap, above: i, below: i + 1 });
+    }
+    if (!items.length) return null;
+    const gapList = items.map(r => r.gap).sort((a, b) => a - b);
+    const rowGap = gapList[Math.floor(gapList.length / 2)];
+    const k = rowGap / DOC_ROW;
+    const cell = DOC_CELL * k;
+    const rows = items.map(r => ({ top: r.top, bottom: r.bottom }));
+    const lastItem = items[items.length - 1];
+    let lastLine = lines[lastItem.below].end;
+
+    // รูปที่ตัดมาอาจไม่มีเส้นบนของแถวแรก หรือเส้นล่างของแถวสุดท้าย
+    if (items[0].above === 0 && lines[0].start >= rowGap * 0.6) {
+      const top = Math.round(lines[0].start - rowGap) + 1, bottom = lines[0].start - 1;
+      if (isItem(top, bottom, cell)) rows.unshift({ top, bottom });
+    }
+    if (lastItem.below === lines.length - 1 && H - 1 - lastLine >= rowGap * 0.6) {
+      const top = lastLine + 1, bottom = Math.min(H - 1, Math.round(lastLine + rowGap));
+      if (isItem(top, bottom, cell)) { rows.push({ top, bottom }); lastLine = null; }
+    }
+
+    const counts = new Int32Array(W);
+    let height = 0;
+    rows.forEach(r => {
+      height += r.bottom - Math.max(0, r.top) + 1;
+      const c = columnCounts(r.top, r.bottom);
+      for (let x = 0; x < W; x++) counts[x] += c[x];
+    });
+    const bars = barChain(counts, height * 0.25, cell, 6 * k);
+    if (bars.length < 3) return null;
+    return { rows, bars, k, W, H, lastLine };
+  }
+
+  function hasInk(src, box, k) {
+    const x = Math.max(0, Math.round(box.x)), y = Math.max(0, Math.round(box.y));
+    const w = Math.min(src.width - x, Math.round(box.w)), h = Math.min(src.height - y, Math.round(box.h));
+    if (w <= 0 || h <= 0) return false;
+    const p = src.getContext('2d', { willReadFrequently: true }).getImageData(x, y, w, h).data;
+    let n = 0;
+    for (let i = 0; i < p.length; i += 4) if (p[i] * 0.299 + p[i + 1] * 0.587 + p[i + 2] * 0.114 < 150) n++;
+    return n >= 4 * k * k;
+  }
+
+  // ตาราง PEGAN: หาเส้นแถวที่ห่างเท่ากัน และใช้คอลัมน์รายละเอียด (กว้างสุด) เป็นจุดอ้างอิง
+  function detectGrid(canvas) {
+    const W = canvas.width, H = canvas.height;
+    const d = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, W, H).data;
+    const lum = (x, y) => { const i = (y * W + x) * 4; return d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114; };
+    const xa = Math.floor(W * 0.12), xb = Math.floor(W * 0.88);
+    const mids = [];
+    let run = null;
+    for (let y = 2; y < H - 2; y++) {
+      let n = 0, total = 0;
+      for (let x = xa; x < xb; x += 3) {
+        total++;
+        const v = lum(x, y);
+        if (v <= lum(x, y - 2) - 6 && v <= lum(x, y + 2) - 6) n++;
+      }
+      if (n > total * 0.7) {
+        if (run && y - run.end <= 2) run.end = y; else { if (run) mids.push((run.start + run.end) / 2); run = { start: y, end: y }; }
+      }
+    }
+    if (run) mids.push((run.start + run.end) / 2);
+    let best = [];
+    for (let i = 0; i < mids.length; i++) for (let j = i + 1; j < mids.length; j++) {
+      const gap = mids[j] - mids[i];
+      if (gap < 18) continue;
+      if (gap > 70) break;
+      const tol = Math.max(2, gap * 0.08);
+      const chain = [mids[i], mids[j]];
+      for (let s = j + 1; s < mids.length; s++) {
+        const delta = mids[s] - chain[chain.length - 1];
+        if (Math.abs(delta - gap) <= tol) chain.push(mids[s]);
+        else if (delta > gap + tol) break;
+      }
+      if (chain.length > best.length) best = chain;
+    }
+    if (best.length < 4) return null;
+    const gap = (best[best.length - 1] - best[0]) / (best.length - 1);
+    const top = Math.round(best[0]), bottom = Math.round(best[best.length - 1]);
+    const off = 2;
+    const peaks = [];
+    let col = null;
+    for (let x = off; x < W - off; x++) {
+      let n = 0, total = 0;
+      for (let y = top + 3; y < bottom - 3; y += 2) {
+        total++;
+        const v = lum(x, y);
+        if (v <= lum(x - off, y) - 5 && v <= lum(x + off, y) - 5) n++;
+      }
+      if (total && n / total >= 0.6) {
+        if (col && x - col.end <= 3) col.end = x; else { if (col) peaks.push((col.start + col.end) / 2); col = { start: x, end: x }; }
+      }
+    }
+    if (col) peaks.push((col.start + col.end) / 2);
+    let desc = -1, widest = 0;
+    for (let i = 1; i + 8 < peaks.length; i++) {
+      if (peaks[i + 1] - peaks[i] > widest) { widest = peaks[i + 1] - peaks[i]; desc = i; }
+    }
+    if (desc < 1) return null;
+    const c = i => [peaks[desc + i], peaks[desc + i + 1]];
+    return { lines: best, gap, k: gap / 28.5, W, H, code: c(-1), desc: c(0), qty: c(2), price: c(4), discount: c(5), amount: c(7) };
+  }
+
+  async function readGrid(g, src, G) {
+    const worker = await getWorker();
+    const k = G.k;
+    const lowRes = k < 0.6;
+    const cell = (c, t) => ({ x: c[0] + 3 * k, y: t + 3 * k, w: c[1] - c[0] - 6 * k, h: G.gap - 5 * k });
+    const many = async (b, chars) => {
+      const out = [];
+      for (const s of [2, 3, 4]) out.push((await ocr(worker, cropCanvas(src, b.x, b.y, b.w, b.h, s / k, true), chars)).trim());
+      return out;
+    };
+    const money = async b => SkuCore.voteNumber((await many(inkBox(src, b, k), '0123456789.,')).map(SkuCore.parseMoney));
+    const tops = [G.lines[0] - G.gap, ...G.lines.slice(0, -1)];
+    // หัวตารางพื้นสีส้มอ่อน แถวสินค้าเริ่มหลังแถวนี้
+    const tint = b => {
+      const x = Math.max(0, Math.round(b.x)), y = Math.max(0, Math.round(b.y));
+      const w = Math.min(src.width - x, Math.round(b.w)), h = Math.min(src.height - y, Math.round(b.h));
+      if (w <= 0 || h <= 0) return 0;
+      const p = src.getContext('2d', { willReadFrequently: true }).getImageData(x, y, w, h).data;
+      const diffs = [];
+      for (let n = 0; n < p.length; n += 16) diffs.push(p[n] - p[n + 2]);
+      diffs.sort((a, b2) => a - b2);
+      return diffs[Math.floor(diffs.length / 2)];
+    };
+    let firstRow = 0;
+    tops.forEach((t, i) => { if (tint(cell(G.code, t)) > 15) firstRow = i + 1; });
+    const out = [];
+    let amountSum = 0, allLines = true;
+    for (let i = firstRow; i < tops.length; i++) {
+      if (g.cancelled) return;
+      const t = tops[i];
+      const codeBox = cell(G.code, t);
+      if (t < 0 || !hasInk(src, codeBox, k)) continue;
+      showProgress(g, `แถว ${out.length + 1}`, 0.08 + 0.88 * i / tops.length);
+      const codeReads = await many(codeBox, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-/ ');
+      let sku = SkuCore.resolvePegan(codeReads, catalog);
+      const descBox = cell(G.desc, t);
+      let seenBox = codeBox;
+      if (!sku.sku) {
+        const ego = SkuCore.resolveEgo(codeReads, await many(descBox, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789()/ '), colorMap, catalog);
+        if (ego) { sku = ego; seenBox = descBox; }
+      }
+      const qtyBox = cell(G.qty, t);
+      // จำนวนบางโปรแกรมเขียน 1.00
+      const qtyRaw = await many(inkBox(src, qtyBox, k), '0123456789.');
+      const qtyRead = SkuCore.voteQty(qtyRaw.map(x => { const m = x.match(/^(\d+)\.\d*$/); return m ? m[1] : x.replace(/\D/g, ''); }));
+      const price = await money(cell(G.price, t));
+      const discountText = await many(inkBox(src, cell(G.discount, t), k), '0123456789');
+      const discountCounts = discountText.map(x => parseInt(x.replace(/\D/g, ''), 10)).filter(x => !isNaN(x) && x <= 100);
+      const discount = SkuCore.voteNumber(discountCounts);
+      const amount = await money(cell(G.amount, t));
+      let qty = qtyRead.qty, qtySure = false;
+      if (price !== null && discount !== null && amount !== null) {
+        const fromAmount = SkuCore.qtyFromAmount(price, discount, amount);
+        if (qty && SkuCore.lineMatches(Number(qty), price, discount, amount)) qtySure = true;
+        else if (fromAmount) { qty = String(fromAmount); qtySure = !qtyRead.qty || Number(qtyRead.qty) === fromAmount * 100; }
+      }
+      if (amount !== null) amountSum += amount; else allLines = false;
+      out.push({
+        sku: sku.sku, qty, skuSure: sku.sure && !lowRes, qtySure: qtySure && !lowRes, alts: sku.alts, checked: false,
+        skuImg: preview(src, seenBox.x, seenBox.y, seenBox.w, seenBox.h, 28), qtyImg: preview(src, qtyBox.x, qtyBox.y, qtyBox.w, qtyBox.h, 28),
+        meta: sku.meta,
+      });
+    }
+    if (g.cancelled) return;
+    if (!out.length) return failGroup(g, 'ไม่พบรายการสินค้าในตาราง');
+    showProgress(g, 'กำลังอ่านยอดเงินในภาพ', 0.97);
+    const last = G.lines[G.lines.length - 1];
+    const footerMoney = [];
+    for (const step of [0.9, 1.9]) {
+      const y = last + step * G.gap - G.gap / 2 + 2 * k;
+      if (y + G.gap > G.H) continue;
+      const box = { x: G.amount[0] + 12 * k, y, w: G.amount[1] - G.amount[0] - 14 * k, h: G.gap - 2 * k };
+      for (const s of [2, 3, 4]) {
+        const v = SkuCore.parseMoney(await ocr(worker, cropCanvas(src, box.x, box.y, box.w, box.h, s / k, true), '0123456789.,'));
+        if (v !== null) footerMoney.push(v);
+      }
+    }
+    if (g.cancelled) return;
+    g.form = 'grid';
+    g.rows = out;
+    g.footerReads = [];
+    g.money = { sum: Math.round(amountSum * 100) / 100, ok: allLines && footerMoney.some(v => Math.abs(v - amountSum) < 0.015) };
+    g.lowRes = lowRes;
+    g.state = 'done';
+    g.file = null;
+    renderGroup(g);
+    paint();
+  }
+
+  // ตัดให้พอดีตัวอักษร ไซซ์ตัวเดียวจะอ่านแม่นขึ้น
+  function inkBox(src, box, k) {
+    const x0 = Math.max(0, Math.round(box.x)), y0 = Math.max(0, Math.round(box.y));
+    const w = Math.min(src.width - x0, Math.round(box.w)), h = Math.min(src.height - y0, Math.round(box.h));
+    const p = src.getContext('2d', { willReadFrequently: true }).getImageData(x0, y0, w, h).data;
+    let minX = w, maxX = -1, minY = h, maxY = -1;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (p[i] * 0.299 + p[i + 1] * 0.587 + p[i + 2] * 0.114 < 170) { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
+    }
+    if (maxX < 0) return box;
+    const m = 1.5 * k;
+    return { x: Math.max(0, x0 + minX - m), y: Math.max(0, y0 + minY - m), w: maxX - minX + 1 + 2 * m, h: maxY - minY + 1 + 2 * m };
+  }
+
+  async function readDoc(g, src, D) {
+    const worker = await getWorker();
+    const k = D.k;
+    const lowRes = k < MIN_ZOOM;
+    const b0 = D.bars[0];
+    const many = async (b, chars, psm, mode) => {
+      const out = [];
+      for (const s of DOC_SCALES) out.push((await ocr(worker, cropCanvas(src, b.x, b.y, b.w, b.h, s / k, mode || true), chars, psm)).replace(/\s/g, ''));
+      return out;
+    };
+    const out = [];
+    for (let i = 0; i < D.rows.length; i++) {
+      if (g.cancelled) return;
+      showProgress(g, `แถว ${i + 1} จาก ${D.rows.length}`, 0.08 + 0.88 * i / D.rows.length);
+      const t = D.rows[i].top, rowH = D.rows[i].bottom - t;
+      const modelReads = await many({ x: Math.max(0, b0 - 230 * k), y: t + 1 * k, w: 62 * k, h: 17 * k }, '0123456789');
+      const colorReads = await many({ x: b0 - 168 * k, y: t + 15 * k, w: 36 * k, h: 18 * k }, '0123456789');
+      const totalBox = { x: b0 + 290 * k, y: t + 15 * k, w: 32 * k, h: 18 * k };
+      const total = SkuCore.voteQty(await many(totalBox, '0123456789'));
+      const cells = [];
+      for (let c = 0; c < D.bars.length - 1; c++) {
+        const bx = D.bars[c], nx = D.bars[c + 1];
+        const label = { x: bx + 3 * k, y: t + 1 * k, w: 30 * k, h: 16 * k };
+        if (!hasInk(src, label, k)) continue;
+        const tight = inkBox(src, label, k);
+        const sizeReads = [...await many(tight, 'XSML234567', '8'), ...await many(tight, 'XSML234567', '10'), ...await many(tight, 'XSML234567', '8', 'bin')];
+        const sizes = sizeReads.map(SkuCore.parseDocSize).filter(Boolean);
+        const counted = {};
+        sizes.forEach(s => { counted[s] = (counted[s] || 0) + 1; });
+        const size = Object.keys(counted).sort((a, b) => counted[b] - counted[a])[0] || '';
+        const qtyBox = { x: bx + 24 * k, y: t + 15 * k, w: nx - bx - 26 * k, h: 18 * k };
+        const qty = SkuCore.voteQty(await many(qtyBox, '0123456789'));
+        cells.push({ size, qty, sizeSure: sizes.length >= 2 && counted[size] / sizes.length >= 0.75, bx, nx });
+      }
+      const single = cells.length === 1;
+      const cellSum = cells.reduce((a, c) => a + parseInt(c.qty.qty || '0', 10), 0);
+      const totalNum = parseInt(total.qty || '', 10);
+      const sumOk = !isNaN(totalNum) && cellSum === totalNum;
+      cells.forEach(c => {
+        const res = SkuCore.resolveDoc({ modelReads, colorReads, size: c.size }, colorMap, catalog);
+        let qty = c.qty.qty;
+        let qtySure = sumOk;
+        if (single && !isNaN(totalNum) && total.sure) {
+          qtySure = !qty || qty === total.qty;
+          qty = total.qty;
+        }
+        out.push({
+          sku: res.sku, qty, skuSure: res.sure && c.sizeSure && !lowRes, qtySure: qtySure && !lowRes, alts: [], checked: false,
+          skuImg: preview(src, Math.max(0, b0 - 230 * k), t, 100 * k, rowH, 40), qtyImg: preview(src, c.bx, t, c.nx - c.bx, rowH, 40),
+          meta: { model: res.model, colorCode: res.colorCode, colorName: res.colorName, size: c.size, options: res.options },
+        });
+      });
+    }
+    if (g.cancelled) return;
+    showProgress(g, 'กำลังอ่านยอดท้ายเอกสาร', 0.97);
+    const footerReads = [];
+    const fy = D.lastLine === null ? D.H : D.lastLine + 15 * k;
+    const footerBox = { x: b0 + 290 * k, y: fy, w: 32 * k, h: Math.min(18 * k, D.H - fy) };
+    if (footerBox.h >= 10 * k && hasInk(src, footerBox, k)) {
+      for (const mode of [true, 'bin']) for (const s of QTY_SCALES) {
+        const v = (await ocr(worker, cropCanvas(src, footerBox.x, footerBox.y, footerBox.w, footerBox.h, s / k, mode), '0123456789')).replace(/\D/g, '');
+        if (v) footerReads.push(parseInt(v, 10));
+      }
+    }
+    if (g.cancelled) return;
+    g.form = 'doc';
+    g.rows = out;
+    g.footerReads = footerReads;
+    g.lowRes = lowRes;
+    g.state = 'done';
+    g.file = null;
+    renderGroup(g);
+    paint();
+  }
+
+  function applyColor(row, name) {
+    saveColor(row.meta.model, row.meta.colorCode, name);
+    groups.forEach(g => {
+      let changed = false;
+      g.rows.forEach(r => {
+        if (!r.meta || r.meta.model !== row.meta.model || r.meta.colorCode !== row.meta.colorCode || (r.checked && r !== row)) return;
+        const actual = SkuCore.matchColor(r.meta.model, name, catalog);
+        if (!actual || !r.meta.size) return;
+        r.sku = catalog.get(`${r.meta.model}-${actual}-${r.meta.size}`) || `${r.meta.model}-${actual}-${r.meta.size}`;
+        r.meta.colorName = actual;
+        r.skuSure = catalog.has(r.sku);
+        changed = true;
+      });
+      if (changed) renderGroup(g);
+    });
+    paint();
+  }
+
+  function cropCanvas(src, x, y, w, h, scale, stretch) {
+    const pad = 16;
+    const c = document.createElement('canvas');
+    c.width = Math.round(w * scale) + pad * 2;
+    c.height = Math.round(h * scale) + pad * 2;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.fillStyle = '#fff';
+    g.fillRect(0, 0, c.width, c.height);
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(src, x, y, w, h, pad, pad, c.width - pad * 2, c.height - pad * 2);
+    if (stretch) {
+      const im = g.getImageData(0, 0, c.width, c.height), p = im.data;
+      let lo = 255, hi = 0;
+      for (let i = 0; i < p.length; i += 4) { const v = (p[i] * 299 + p[i + 1] * 587 + p[i + 2] * 114) / 1000; if (v < lo) lo = v; if (v > hi) hi = v; }
+      const span = Math.max(1, hi - lo);
+      for (let i = 0; i < p.length; i += 4) {
+        let v = ((p[i] * 299 + p[i + 1] * 587 + p[i + 2] * 114) / 1000 - lo) * 255 / span;
+        if (stretch === 'bin') v = v >= 165 ? 255 : 0;
+        p[i] = p[i + 1] = p[i + 2] = v; p[i + 3] = 255;
+      }
+      g.putImageData(im, 0, 0);
+    }
+    return c;
+  }
+
+  async function ocr(worker, canvas, chars, psm) {
+    const mode = psm || '7';
+    if (chars + mode !== lastChars) {
+      await worker.setParameters({ tessedit_pageseg_mode: mode, user_defined_dpi: '300', preserve_interword_spaces: '1', tessedit_char_whitelist: chars });
+      lastChars = chars + mode;
+    }
+    return (await worker.recognize(canvas)).data.text;
+  }
+
+  function preview(src, x, y, w, h, cssH) {
+    const c = document.createElement('canvas');
+    const r = window.devicePixelRatio || 1;
+    c.height = Math.round(cssH * r);
+    c.width = Math.round(c.height * w / h);
+    c.style.height = cssH + 'px';
+    c.style.width = Math.round(cssH * w / h) + 'px';
+    const g = c.getContext('2d');
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(src, x, y, w, h, 0, 0, c.width, c.height);
+    return c;
+  }
+
+  function showProgress(g, text, frac) {
+    const finished = groups.filter(x => x.state === 'done' || x.state === 'error').length;
+    $('status').hidden = false;
+    $('status-text').textContent = `กำลังอ่านรูป ${groups.indexOf(g) + 1} จาก ${groups.length} · ${text}`;
+    $('bar-fill').style.width = (100 * (finished + frac) / Math.max(1, groups.length)) + '%';
+  }
+
+  function failGroup(g, message) {
+    g.state = 'error';
+    g.error = message;
+    g.file = null;
+    renderGroup(g);
+    paint();
+  }
+
+  async function readGroup(g) {
+    g.state = 'read';
+    paint();
+    try {
+      showProgress(g, 'กำลังเปิดภาพ', 0.02);
+      const bmp = await createImageBitmap(g.file);
+      const src = document.createElement('canvas');
+      src.width = bmp.width; src.height = bmp.height;
+      src.getContext('2d', { willReadFrequently: true }).drawImage(bmp, 0, 0);
+      bmp.close();
+
+      const L = detectLayoutAnySize(src);
+      if (!L) {
+        // ตาราง PEGAN มีเส้นตั้งยาวตลอดแถว ส่วนใบสั่งมีแค่ขีดสั้น จึงต้องเช็ก PEGAN ก่อน
+        const G = detectGrid(src);
+        if (G) {
+          showProgress(g, 'กำลังเตรียมตัวอ่าน', 0.05);
+          return await readGrid(g, src, G);
+        }
+        const D = detectDoc(src);
+        if (!D) return failGroup(g, 'ไม่พบตารางสินค้า ลองแคปให้เห็นตารางและเส้นแบ่งแถวครบ');
+        showProgress(g, 'กำลังเตรียมตัวอ่าน', 0.05);
+        return await readDoc(g, src, D);
+      }
+      showProgress(g, 'กำลังเตรียมตัวอ่าน', 0.05);
+      const worker = await getWorker();
+      const k = L.k;
+      const lowRes = k < MIN_ZOOM;
+      const out = [];
+      for (let i = 0; i < L.ys.length; i++) {
+        if (g.cancelled) return;
+        const y = L.ys[i];
+        showProgress(g, `แถว ${i + 1} จาก ${L.ys.length}`, 0.08 + 0.88 * i / L.ys.length);
+        const skuX = L.btnX + 70 * k, skuY = y - 8 * k, skuW = 118 * k, skuH = 16 * k;
+        const nameX = L.btnX + 192 * k, nameW = Math.min(270 * k, L.W - (L.btnX + 192 * k));
+        const reads = [], nameTexts = [];
+        for (const s of SCALES) {
+          reads.push((await ocr(worker, cropCanvas(src, skuX, skuY, skuW, skuH, s / k, true), SKU_CHARS)).replace(/\s/g, ''));
+          const nameText = await ocr(worker, cropCanvas(src, nameX, skuY, nameW, skuH, s / k, true), SKU_CHARS);
+          nameTexts.push(nameText);
+          const token = nameText.trim().split(/\s+/).filter(t => /^W[A-Z]-/.test(t)).pop();
+          if (token) reads.push(token);
+        }
+        const qX = L.qtyA + 5 * k, qW = L.qtyB - L.qtyA - 10 * k, qY = y - 7 * k, qH = 14 * k;
+        const qReads = [];
+        for (const s of QTY_SCALES) qReads.push((await ocr(worker, cropCanvas(src, qX, qY, qW, qH, s / k, true), '0123456789')).replace(/\s/g, ''));
+        const sku = SkuCore.resolveWarrix(SkuCore.voteSku(reads), catalog, nameTexts), qty = SkuCore.voteQty(qReads);
+        out.push({
+          sku: sku.sku, qty: qty.qty, skuSure: sku.sure && !lowRes, qtySure: qty.sure && !lowRes, alts: sku.alts, checked: false,
+          skuImg: preview(src, skuX, skuY, skuW, skuH, 28), qtyImg: preview(src, qX, qY, qW, qH, 28),
+        });
+      }
+      if (g.cancelled) return;
+      showProgress(g, 'กำลังอ่านยอดรวมในภาพ', 0.97);
+      const fy = L.ys[L.ys.length - 1] + 40.3 * k;
+      const footerReads = [], footerAlt = [];
+      if (fy + 8 * k < L.H) {
+        const fx = L.W * 0.69, fw = L.W * 0.0365;
+        for (const mode of [true, 'bin']) for (const s of QTY_SCALES) {
+          // ยอดบางใบเขียน 22.00 ถ้าจุดหายจะกลายเป็น 2200 จึงเก็บค่าที่หาร 100 ไว้เทียบด้วย
+          const t = (await ocr(worker, cropCanvas(src, fx, fy - 7 * k, fw, 14 * k, s / k, mode), '0123456789.')).replace(/[^\d.]/g, '');
+          const m = t.match(/^(\d+)/);
+          if (!m) continue;
+          const v = parseInt(m[1], 10);
+          footerReads.push(v);
+          if (!t.includes('.') && v >= 100 && v % 100 === 0) footerAlt.push(v / 100);
+        }
+      }
+      if (g.cancelled) return;
+      g.rows = out;
+      g.footerReads = footerReads;
+      g.footerAlt = footerAlt;
+      g.lowRes = lowRes;
+      g.state = 'done';
+      g.file = null;
+      renderGroup(g);
+      paint();
+    } catch (e) {
+      console.error(e);
+      if (!g.cancelled) failGroup(g, 'อ่านรูปนี้ไม่สำเร็จ ลองแคปใหม่ให้ชัดขึ้น');
+    }
+  }
+
+  // อ่านทีละรูปตามคิว รูปที่เพิ่มระหว่างอ่านจะต่อท้ายคิวเอง
+  async function pump() {
+    if (pumping) return;
+    pumping = true;
+    try {
+      $('status').hidden = false;
+      $('status-text').textContent = 'กำลังเตรียมฐาน SKU';
+      await catalogReady;
+      for (;;) {
+        const g = groups.find(x => x.state === 'wait');
+        if (!g) break;
+        await readGroup(g);
+      }
+    } finally {
+      pumping = false;
+      $('status').hidden = true;
+      paint();
+    }
+  }
+
+  const needsCheck = r => !r.checked && (!r.skuSure || !r.qtySure || !r.sku || !/^\d+$/.test(r.qty) || !catalog.has(r.sku));
+
+  function buildRow(g, r, i) {
+    const tr = document.createElement('tr');
+    const num = document.createElement('td'); num.className = 'num'; num.textContent = i + 1;
+    const seen = document.createElement('td'); seen.className = 'seen';
+    seen.append(r.skuImg, r.qtyImg);
+
+    const skuCell = document.createElement('td');
+    const sku = document.createElement('input');
+    sku.value = r.sku; sku.spellcheck = false; sku.setAttribute('aria-label', `SKU แถว ${i + 1}`);
+    sku.addEventListener('input', () => { r.sku = sku.value.trim().toUpperCase(); r.checked = true; paint(); });
+    skuCell.append(sku);
+    const chips = document.createElement('div'); chips.className = 'chips';
+    r.alts.filter(a => a !== r.sku).forEach(a => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = a; b.title = 'ใช้ SKU นี้';
+      b.addEventListener('click', () => { r.sku = a; r.alts = [a, ...r.alts.filter(x => x !== a)]; r.checked = true; renderGroup(g); paint(); });
+      chips.append(b);
+    });
+    if (r.meta && r.meta.options.length) {
+      const pick = document.createElement('select');
+      pick.setAttribute('aria-label', `เลือกสีแถว ${i + 1}`);
+      const blank = document.createElement('option');
+      blank.value = ''; blank.textContent = r.meta.colorName ? 'เปลี่ยนสี' : `เลือกสีของเลข ${r.meta.colorCode || '-'}`;
+      pick.append(blank);
+      r.meta.options.forEach(name => { const o = document.createElement('option'); o.value = name; o.textContent = name; pick.append(o); });
+      pick.value = r.meta.colorName && r.meta.options.includes(r.meta.colorName) ? r.meta.colorName : '';
+      pick.addEventListener('change', () => { if (pick.value) { r.checked = true; applyColor(r, pick.value); } });
+      chips.append(pick);
+    }
+    skuCell.append(chips);
+
+    const qtyCell = document.createElement('td');
+    const qty = document.createElement('input');
+    qty.className = 'qty'; qty.inputMode = 'numeric'; qty.value = r.qty; qty.setAttribute('aria-label', `จำนวนแถว ${i + 1}`);
+    qty.addEventListener('input', () => { r.qty = qty.value.replace(/\D/g, ''); qty.value = r.qty; r.checked = true; paint(); });
+    qtyCell.append(qty);
+
+    const st = document.createElement('td'); st.className = 'state';
+    const ok = document.createElement('button');
+    ok.type = 'button'; ok.textContent = 'ยืนยันแถวนี้';
+    ok.addEventListener('click', () => { r.checked = true; paint(); });
+    const label = document.createElement('span');
+    const note = document.createElement('span');
+    note.className = 'dbnote';
+    note.textContent = 'ไม่พบในฐาน';
+    st.append(ok, label, note);
+    tr.append(num, seen, skuCell, qtyCell, st);
+    r.tr = tr; r.okBtn = ok; r.label = label; r.chips = chips; r.note = note;
+    return tr;
+  }
+
+  function renderGroup(g) {
+    g.tbody.textContent = '';
+    const tr = document.createElement('tr');
+    tr.className = 'group';
+    const th = document.createElement('th');
+    th.colSpan = 5;
+    const head = document.createElement('div');
+    head.className = 'ghead';
+    const make = cls => { const s = document.createElement('span'); if (cls) s.className = cls; head.append(s); return s; };
+    const ui = { name: make('gname'), stat: make(), match: make(), flag: make(), low: make('warn') };
+    ui.name.title = g.name;
+    ui.low.textContent = 'ภาพเล็กเกินไป ควรแคปใหม่ที่ซูม 100% ขึ้นไป';
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = 'เอารูปนี้ออก';
+    remove.addEventListener('click', () => removeGroup(g));
+    head.append(remove);
+    th.append(head);
+    tr.append(th);
+    g.tbody.append(tr);
+    g.ui = ui;
+    g.rows.forEach((r, i) => g.tbody.append(buildRow(g, r, i)));
+  }
+
+  function removeGroup(g) {
+    if (g.rows.some(r => r.checked) && !confirm(`รูปนี้มีแถวที่ตรวจแล้ว ${g.rows.filter(r => r.checked).length} แถว ต้องการเอาออกไหม?`)) return;
+    g.cancelled = true;
+    g.tbody.remove();
+    groups = groups.filter(x => x !== g);
+    paint();
+  }
+
+  function clearAll() {
+    if (!groups.length || !confirm(`ล้างผลทั้ง ${groups.length} รูป? แถวที่ตรวจไว้จะหายไปด้วย`)) return;
+    groups.forEach(g => { g.cancelled = true; g.tbody.remove(); });
+    groups = [];
+    paint();
+  }
+
+  // ใบสั่งหลายหน้า: ยอดท้ายเอกสารคือยอดรวมของหน้าก่อนหน้าทั้งหมดจนถึงหน้าท้าย
+  function linkDocPages() {
+    let pages = [], sum = 0;
+    groups.forEach(g => {
+      if (g.state !== 'done' || g.form !== 'doc') return;
+      g.doc = null;
+      pages.push(g);
+      sum += g.rows.reduce((a, r) => a + qtyOf(r), 0);
+      if (g.footerReads.length) {
+        const counted = {};
+        g.footerReads.forEach(v => { counted[v] = (counted[v] || 0) + 1; });
+        const footer = parseInt(Object.keys(counted).sort((a, b) => counted[b] - counted[a])[0], 10);
+        const doc = { sum, footer: g.footerReads.includes(sum) ? sum : footer, matched: g.footerReads.includes(sum) };
+        pages.forEach(p => { p.doc = doc; });
+        pages = [];
+        sum = 0;
+      }
+    });
+  }
+
+  function docFooter(g) {
+    const d = g.doc;
+    if (!d) return { key: 'unclear', cls: 'warn', text: 'ยังไม่เจอหน้าท้ายเอกสาร กรุณาเทียบยอดเอง' };
+    if (d.matched) return { key: 'ok', cls: 'good', text: `ตรงกับยอดท้ายเอกสาร (${d.footer})` };
+    if (d.footer > d.sum) return { key: 'unclear', cls: 'warn', text: `ท้ายเอกสาร ${d.footer} ตัว ยังขาด ${d.footer - d.sum} ตัว อาจอยู่หน้าอื่น` };
+    return { key: 'bad', cls: 'bad', text: `เกินยอดท้ายเอกสาร (${d.footer})` };
+  }
+
+  function footerState(g, total) {
+    if (g.form === 'doc') return docFooter(g);
+    if (g.form === 'grid') {
+      const text = g.money.sum.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return g.money.ok
+        ? { key: 'ok', cls: 'good', text: `ยอดเงินตรงกับภาพ (${text})` }
+        : { key: 'unclear', cls: 'warn', text: 'อ่านยอดเงินไม่ชัด กรุณาเทียบเอง' };
+    }
+    const reads = g.footerReads, alt = g.footerAlt || [];
+    if (reads.includes(total) || alt.includes(total)) return { key: 'ok', cls: 'good', text: `ตรงกับยอดในภาพ (${total})` };
+    if (reads.length >= 2 && reads.every(v => v === reads[0])) return { key: 'bad', cls: 'bad', text: `ไม่ตรงกับยอดในภาพ (${alt.length === reads.length ? alt[0] : reads[0]})` };
+    return { key: 'unclear', cls: 'warn', text: 'อ่านยอดรวมไม่ชัด กรุณาเทียบเอง' };
+  }
+
+  const qtyOf = r => parseInt(r.qty || '0', 10);
+  const doneRows = () => groups.flatMap(g => g.state === 'done' ? g.rows : []).filter(r => r.sku);
+
+  function exportRows() {
+    const rows = doneRows();
+    if (!$('merge').checked) return rows.map(r => ({ sku: r.sku, qty: r.qty }));
+    const sum = new Map();
+    rows.forEach(r => sum.set(r.sku, (sum.get(r.sku) || 0) + qtyOf(r)));
+    return [...sum].map(([sku, qty]) => ({ sku, qty: String(qty) }));
+  }
+
+  function paint() {
+    let flagged = 0, total = 0, ok = 0, bad = 0, unclear = 0, failed = 0, missing = 0;
+    linkDocPages();
+    groups.forEach((g, idx) => {
+      const ui = g.ui;
+      ui.name.textContent = `รูป ${idx + 1} · ${g.name}`;
+      const done = g.state === 'done';
+      ui.match.hidden = ui.flag.hidden = !done;
+      ui.low.hidden = !(done && g.lowRes);
+      ui.stat.className = g.state === 'error' ? 'bad' : '';
+      if (g.state === 'wait') ui.stat.textContent = 'รอคิว';
+      if (g.state === 'read') ui.stat.textContent = 'กำลังอ่าน';
+      if (g.state === 'error') { ui.stat.textContent = g.error; failed++; }
+      if (!done) return;
+      let gFlag = 0, gTotal = 0;
+      g.rows.forEach(r => {
+        const need = needsCheck(r);
+        if (need) gFlag++;
+        gTotal += qtyOf(r);
+        r.tr.classList.toggle('flag', need);
+        r.okBtn.hidden = !need;
+        r.chips.hidden = !need;
+        r.label.hidden = need;
+        const inDb = catalog.has(r.sku);
+        if (!inDb) missing++;
+        r.note.hidden = inDb;
+        r.label.textContent = r.checked ? 'ตรวจแล้ว' : 'ตรงฐาน';
+      });
+      flagged += gFlag;
+      total += gTotal;
+      ui.stat.textContent = `${g.rows.length} รายการ · รวม ${gTotal.toLocaleString('en-US')} ตัว`;
+      const f = footerState(g, gTotal);
+      ui.match.textContent = f.text;
+      ui.match.className = f.cls;
+      if (f.key === 'ok') ok++; else if (f.key === 'bad') bad++; else unclear++;
+      ui.flag.textContent = gFlag ? `ต้องตรวจ ${gFlag} แถว` : 'ตรวจครบแล้ว';
+      ui.flag.className = gFlag ? 'warn' : 'good';
+    });
+    $('result').hidden = !groups.length;
+    $('s-images').textContent = groups.length;
+    $('s-count').textContent = exportRows().length;
+    $('s-total').textContent = total.toLocaleString('en-US');
+
+    const m = $('s-match');
+    const read = ok + bad + unclear;
+    if (!read) { m.textContent = ''; m.className = ''; }
+    else if (bad) { m.textContent = `ยอดไม่ตรง ${bad} รูป`; m.className = 'bad'; }
+    else if (unclear) { m.textContent = `ต้องเทียบยอดเอง ${unclear} รูป`; m.className = 'warn'; }
+    else { m.textContent = `ยอดตรงครบ ${ok} รูป`; m.className = 'good'; }
+
+    const fl = $('s-flag');
+    fl.textContent = !read ? '' : flagged ? `ต้องตรวจ ${flagged} แถว` : 'ตรวจครบแล้ว';
+    fl.className = flagged ? 'warn' : 'good';
+    const fa = $('s-failed');
+    fa.hidden = !failed;
+    fa.textContent = `อ่านไม่สำเร็จ ${failed} รูป`;
+    const mi = $('s-missing');
+    mi.hidden = !missing;
+    mi.textContent = `ไม่พบในฐาน ${missing} แถว`;
+
+    const seen = new Map();
+    doneRows().forEach(r => seen.set(r.sku, (seen.get(r.sku) || 0) + 1));
+    const repeats = [...seen.values()].filter(n => n > 1).length;
+    $('merge-text').textContent = repeats ? `รวม SKU ซ้ำ (${repeats})` : 'รวม SKU ซ้ำ';
+  }
+
+  function toast(text) {
+    const t = $('toast');
+    t.textContent = text;
+    t.hidden = false;
+    clearTimeout(toast.t);
+    toast.t = setTimeout(() => { t.hidden = true; }, 3200);
+  }
+
+  function exportNotes() {
+    const flagged = groups.flatMap(g => g.state === 'done' ? g.rows : []).filter(needsCheck).length;
+    const failed = groups.filter(g => g.state === 'error').length;
+    const pending = groups.filter(g => g.state === 'wait' || g.state === 'read').length;
+    const notes = [];
+    if (pending) notes.push(`ยังอ่านไม่จบ ${pending} รูป`);
+    if (failed) notes.push(`ไม่มีข้อมูลจาก ${failed} รูปที่อ่านไม่สำเร็จ`);
+    if (flagged) notes.push(`ยังมี ${flagged} แถวที่ควรตรวจ`);
+    const missing = doneRows().filter(r => !catalog.has(r.sku)).length;
+    if (missing) notes.push(`มี ${missing} แถวไม่พบในฐาน`);
+    return notes.length ? ' แต่' + notes.join(', ') : '';
+  }
+
+  async function copyRows() {
+    const rows = exportRows();
+    if (!rows.length) return toast('ยังไม่มีรายการให้คัดลอก');
+    const text = rows.map(r => `${r.sku}\t${r.qty}`).join('\r\n');
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (e) {
+      const a = document.createElement('textarea');
+      a.value = text; document.body.append(a); a.select();
+      document.execCommand('copy'); a.remove();
+    }
+    toast(`คัดลอก ${rows.length} แถวแล้ว${exportNotes()}`);
+  }
+
+  function saveCsv() {
+    const rows = exportRows();
+    if (!rows.length) return toast('ยังไม่มีรายการให้บันทึก');
+    const q = v => `"${String(v).replace(/"/g, '""')}"`;
+    const csv = '﻿' + [['SKU', 'จำนวน'].map(q).join(','), ...rows.map(r => [q(r.sku), r.qty].join(','))].join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const n = new Date(), p = x => String(x).padStart(2, '0');
+    a.download = `SKU-จำนวน_${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())}_${p(n.getHours())}${p(n.getMinutes())}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast(`บันทึก ${rows.length} แถวแล้ว${exportNotes()}`);
+  }
+
+  // กันรูปเดิมถูกนับซ้ำ แม้ชื่อไฟล์ต่างกัน
+  async function fileHash(file) {
+    const b = new Uint8Array(await file.arrayBuffer());
+    let h = 0x811c9dc5;
+    for (let i = 0; i < b.length; i++) { h ^= b[i]; h = Math.imul(h, 0x01000193); }
+    return `${b.length}:${h >>> 0}`;
+  }
+
+  const isImage = f => f.type.startsWith('image/') || /\.(png|jpe?g|webp|bmp)$/i.test(f.name);
+  const displayName = f => /^image\.(png|jpe?g)$/i.test(f.name) ? 'ภาพจากคลิปบอร์ด' : f.name;
+
+  async function addFiles(list) {
+    const all = [...(list || [])];
+    const images = all.filter(isImage).sort((a, b) => a.name.localeCompare(b.name, 'th', { numeric: true }));
+    const notImages = all.length - images.length;
+    let duplicates = 0, added = 0;
+    for (const file of images) {
+      const hash = await fileHash(file);
+      if (groups.some(g => g.hash === hash)) { duplicates++; continue; }
+      const g = { file, hash, name: displayName(file), state: 'wait', rows: [], footerReads: [], lowRes: false, error: '', cancelled: false, tbody: document.createElement('tbody'), ui: null };
+      renderGroup(g);
+      groups.push(g);
+      $('table').append(g.tbody);
+      added++;
+    }
+    if (added) { paint(); pump(); }
+    const notes = [];
+    if (duplicates) notes.push(`ข้ามรูปซ้ำ ${duplicates} รูป`);
+    if (notImages) notes.push(`ข้าม ${notImages} ไฟล์ที่ไม่ใช่รูป`);
+    if (notes.length) toast(notes.join(', '));
+  }
+
+  catalogReady = refreshCatalog();
+  $('pick').addEventListener('click', () => $('file').click());
+  $('file').addEventListener('change', e => { const list = [...e.target.files]; e.target.value = ''; addFiles(list); });
+  $('copy').addEventListener('click', copyRows);
+  $('csv').addEventListener('click', saveCsv);
+  $('clear').addEventListener('click', clearAll);
+  $('merge').addEventListener('change', paint);
+  document.addEventListener('paste', e => {
+    const items = [...(e.clipboardData ? e.clipboardData.items : [])].filter(x => x.kind === 'file' && x.type.startsWith('image/'));
+    if (items.length) { e.preventDefault(); addFiles(items.map(x => x.getAsFile())); }
+  });
+  ['dragenter', 'dragover'].forEach(t => document.addEventListener(t, e => { e.preventDefault(); $('drop').classList.add('over'); }));
+  document.addEventListener('dragleave', e => { if (!e.relatedTarget) $('drop').classList.remove('over'); });
+  document.addEventListener('drop', e => { e.preventDefault(); $('drop').classList.remove('over'); addFiles(e.dataTransfer.files); });
+})();
+</script>
+</body>
+</html>
