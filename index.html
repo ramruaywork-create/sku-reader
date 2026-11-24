@@ -123,7 +123,8 @@ td input.qty{width:72px;min-width:72px;text-align:right}
     'EG6197:074': 'ขาว สโนว์', 'EG9011A:01': 'ดำ',
   };
   // เลขไซซ์ที่ซ่อนในรหัส EGO
-  const EGO_SIZE = { 1: 'XL', 2: 'L', 3: 'M', 4: '3L', 5: '2L', 8: 'SS' };
+  const EGO_SIZE = { 1: 'XL', 2: 'L', 3: 'M', 4: '3L', 5: '2L', 6: 'S', 8: 'SS' };
+  const gtinKey = g => String(g || '').toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^0+/, '');
   // สีเดียวกันแต่ฐานมี SKU สองชื่อ ใช้ค่าตามใบก่อนและเตือนจนกว่าผู้ใช้จะเลือก
   const EGO_TWIN = {};
   const digit = c => TO_DIGIT[c] || c;
@@ -194,11 +195,25 @@ td input.qty{width:72px;min-width:72px;text-align:right}
     return { qty: t.value, sure: clean.length === reads.length && t.share === 1 };
   }
 
+  // แต่ละบรรทัดเป็น "SKU" หรือ "SKU<tab>GTIN" (GTIN ของ EGO คือรหัสในใบ เช่น TT50012133)
   function makeCatalog(list) {
-    const map = new Map(), colors = new Map(), models = new Map();
+    const map = new Map(), colors = new Map(), models = new Map(), gtins = new Map(), learnt = new Map();
     for (const raw of list) {
-      const sku = String(raw || '').trim();
+      const [skuRaw, gtinRaw] = String(raw || '').split('\t');
+      const sku = String(skuRaw || '').trim();
       if (!sku) continue;
+      if (gtinRaw && gtinKey(gtinRaw)) {
+        gtins.set(gtinKey(gtinRaw), sku);
+        const p = parseEgoCode(gtinRaw) || parseEgoCode('0' + gtinRaw);
+        const parts = sku.split('-');
+        if (p && parts[0] === p.model && parts.length >= 3) {
+          const color = parts.slice(1, -1).join('-');
+          [`${p.model}:${p.colorCode}`, p.model.startsWith('TT') ? `TT:${p.colorCode}` : ''].filter(Boolean).forEach(k => {
+            if (!learnt.has(k)) learnt.set(k, new Set());
+            learnt.get(k).add(color);
+          });
+        }
+      }
       const up = norm(sku);
       if (!map.has(up)) map.set(up, sku);
       const w = up.match(/^(W[A-Z])-([A-Z0-9]+)-/);
@@ -212,7 +227,9 @@ td input.qty{width:72px;min-width:72px;text-align:right}
         colors.get(m[1]).add(m[2]);
       }
     }
-    return { size: map.size, map, colors, models, has: s => map.has(norm(s)), get: s => map.get(norm(s)) || '' };
+    // เลขสีที่เรียนจาก GTIN ใช้ได้เฉพาะเลขที่ชี้ไปสีเดียว
+    const derived = new Map([...learnt].filter(([, s]) => s.size === 1).map(([k, s]) => [k, [...s][0]]));
+    return { size: map.size, map, colors, models, gtins, derived, has: s => map.has(norm(s)), get: s => map.get(norm(s)) || '' };
   }
 
   function distance(a, b, max) {
@@ -370,11 +387,14 @@ td input.qty{width:72px;min-width:72px;text-align:right}
     // ตัว TT ติดกันมักถูกอ่านเป็น T1 หรือ 11
     if (/^[T1IL7]{2}/.test(s)) {
       const m = s.slice(2).split('').map(digit).join('').match(/^50(\d{2})(\d)(\d{2,3})$/);
-      if (m) return { model: `TT0${m[1]}`, sizeDigit: m[2], colorCode: m[3] };
+      if (m) return { model: `TT0${m[1]}`, sizeDigit: m[2], colorCode: m[3], key: `TT50${m[1]}${m[2]}${m[3]}` };
     }
     const d = s.split('').map(c => c === 'A' ? c : digit(c)).join('');
-    const eg = d.match(/^05(\d{4})\d(\d)(\d{2,3})$/) || d.match(/^06(\d{4}A)(\d)(\d{2,3})$/);
-    return eg ? { model: `EG${eg[1]}`, sizeDigit: eg[2], colorCode: eg[3] } : null;
+    const e5 = d.match(/^05(\d{4})(\d)(\d)(\d{2,3})$/);
+    if (e5) return { model: `EG${e5[1]}`, sizeDigit: e5[3], colorCode: e5[4], key: `5${e5[1]}${e5[2]}${e5[3]}${e5[4]}` };
+    // 069011A501 = EG9011A, 0690665510 = EG9066 (บางรุ่นไม่มีตัวอักษรท้ายรุ่น)
+    const e6 = d.match(/^06(\d{4}A?)(\d)(\d{2,3})$/);
+    return e6 ? { model: `EG${e6[1]}`, sizeDigit: e6[2], colorCode: e6[3], key: `6${e6[1]}${e6[2]}${e6[3]}` } : null;
   }
 
   function descSize(text) {
@@ -395,11 +415,25 @@ td input.qty{width:72px;min-width:72px;text-align:right}
   }
 
   function resolveEgo(codeReads, descReads, colorMap, cat) {
+    const fromDesc = top(descReads.map(descSize).filter(Boolean)).value;
+    // ① รหัสในใบตรงกับ GTIN ในฐาน = ได้ SKU ตรงตัว
+    const hits = codeReads.map(r => { const p = parseEgoCode(r); return (p && cat.gtins.get(p.key)) || cat.gtins.get(gtinKey(r)); }).filter(Boolean);
+    if (hits.length) {
+      const g = top(hits);
+      const parts = g.value.split('-');
+      const gModel = parts[0], gSize = parts[parts.length - 1], gColor = parts.slice(1, -1).join('-');
+      const p = codeReads.map(parseEgoCode).find(Boolean);
+      return {
+        sku: g.value,
+        sure: hits.length >= 2 && g.share >= 0.6 && !g.tied && (!fromDesc || fromDesc === gSize),
+        alts: [g.value],
+        meta: { model: gModel, colorCode: p ? p.colorCode : '', colorName: gColor, size: gSize, options: egoOptions(gModel, gSize, cat) },
+      };
+    }
     const parsed = codeReads.map(parseEgoCode).filter(Boolean);
     if (!parsed.length) return null;
     const t = top(parsed.map(p => `${p.model}|${p.sizeDigit}|${p.colorCode}`));
     const [model, sizeDigit, colorCode] = t.value.split('|');
-    const fromDesc = top(descReads.map(descSize).filter(Boolean)).value;
     const size = EGO_SIZE[sizeDigit] || fromDesc;
     const key = `${model}:${colorCode}`;
     const learned = colorMap[key];
@@ -407,15 +441,23 @@ td input.qty{width:72px;min-width:72px;text-align:right}
     const family = model.startsWith('TT') ? `TT:${colorCode}` : key;
     // ยึดตามฐาน: ใช้สีไทยเมื่อไซซ์นั้นมีในฐาน ถ้าฐานมีแต่ชื่ออังกฤษจึงใช้ชื่อนั้น
     const options = egoOptions(model, size, cat);
-    const colorName = [learned, twin && twin[0], COLOR_SEED[key], COLOR_SEED[family]]
+    let colorName = [learned, twin && twin[0], COLOR_SEED[key], cat.derived.get(key), COLOR_SEED[family], cat.derived.get(family)]
       .map(c => matchColor(model, c, cat)).find(c => c && options.includes(c)) || '';
+    // ② ยังไม่รู้เลขสี: ใช้รหัสสีอังกฤษในรายละเอียด (เช่น สีNV(2L)) เป็นคำแนะนำ แต่ต้องให้ตรวจ
+    let hinted = false;
+    if (!colorName) {
+      const tok = descReads.map(x => (String(x).toUpperCase().replace(/\s/g, '').match(/([A-Z]{2})\((?:SS|XS|S|M|L|XL|[2-9]L)\)/) || [])[1]).find(x => EN_FAMILY[x]);
+      const fam = tok && EN_FAMILY[tok];
+      const pick = fam && (options.find(o => o === fam) || options.find(o => o.startsWith(fam)));
+      if (pick) { colorName = pick; hinted = true; }
+    }
     const built = colorName && size ? `${model}-${colorName}-${size}` : [model, colorCode, size].filter(Boolean).join('-');
     const found = cat.has(built);
     const sku = found ? cat.get(built) : built;
     const other = !learned && twin && size ? cat.get(`${model}-${twin[1]}-${size}`) : '';
     return {
       sku,
-      sure: found && t.share >= 0.6 && !t.tied && !other && (!fromDesc || fromDesc === size),
+      sure: found && !hinted && t.share >= 0.6 && !t.tied && !other && (!fromDesc || fromDesc === size),
       alts: other ? [sku, other] : [sku],
       meta: { model, colorCode, colorName, size, options },
     };
@@ -524,13 +566,14 @@ td input.qty{width:72px;min-width:72px;text-align:right}
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), 20000);
     const headers = { apikey: DB.key, Authorization: `Bearer ${DB.key}` };
-    const page = (offset, extra) => fetch(`${DB.url}/rest/v1/products?select=sku_merchant&order=id.asc&limit=1000&offset=${offset}`, { headers: Object.assign({}, headers, extra), signal: ctl.signal });
+    const page = (offset, extra) => fetch(`${DB.url}/rest/v1/products?select=sku_merchant,gtin&order=id.asc&limit=1000&offset=${offset}`, { headers: Object.assign({}, headers, extra), signal: ctl.signal });
+    const line = r => r.gtin && /^(TT|EG)/i.test(r.sku_merchant || '') ? `${r.sku_merchant}\t${r.gtin}` : r.sku_merchant;
     try {
       const first = await page(0, { Prefer: 'count=exact' });
       if (!first.ok) throw new Error(String(first.status));
       const total = parseInt((first.headers.get('content-range') || '').split('/')[1], 10);
       if (!total) throw new Error('no count');
-      const list = (await first.json()).map(r => r.sku_merchant);
+      const list = (await first.json()).map(line);
       const offsets = [];
       for (let o = 1000; o < total; o += 1000) offsets.push(o);
       const results = [];
@@ -542,7 +585,7 @@ td input.qty{width:72px;min-width:72px;text-align:right}
           results.push(await r.json());
         }
       }));
-      results.forEach(p => p.forEach(r => list.push(r.sku_merchant)));
+      results.forEach(p => p.forEach(r => list.push(line(r))));
       if (list.length !== total) throw new Error('incomplete');
       catalog = SkuCore.makeCatalog(list);
       setDbStatus(`ฐาน SKU ล่าสุด ${catalog.size.toLocaleString('en-US')} รายการ`);
