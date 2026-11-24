@@ -968,13 +968,26 @@ td input.qty{width:72px;min-width:72px;text-align:right}
       }
     }
     if (col) peaks.push((col.start + col.end) / 2);
-    let desc = -1, widest = 0;
-    for (let i = 1; i + 8 < peaks.length; i++) {
-      if (peaks[i + 1] - peaks[i] > widest) { widest = peaks[i + 1] - peaks[i]; desc = i; }
+    // ยึดคอลัมน์ F (แคบสุด และมีคอลัมน์จำนวนเงินกว้างอยู่ทางขวา) เพราะคอลัมน์รหัสอาจกว้างกว่ารายละเอียด
+    const widths = peaks.slice(1).map((x, i) => x - peaks[i]);
+    let f = -1;
+    for (let i = 7; i < widths.length - 1; i++) {
+      if (widths[i + 1] >= widths[i] * 3 && (f < 0 || widths[i] < widths[f])) f = i;
+    }
+    let desc = f >= 0 ? f - 6 : -1;
+    if (desc < 1 || desc + 8 >= peaks.length) {
+      desc = -1;
+      let widest = 0;
+      for (let i = 1; i + 8 < peaks.length; i++) {
+        if (peaks[i + 1] - peaks[i] > widest) { widest = peaks[i + 1] - peaks[i]; desc = i; }
+      }
     }
     if (desc < 1) return null;
     const c = i => [peaks[desc + i], peaks[desc + i + 1]];
-    return { lines: best, gap, k: gap / 28.5, W, H, code: c(-1), desc: c(0), qty: c(2), price: c(4), discount: c(5), amount: c(7) };
+    // ขอบล่างตาราง: เส้นสุดท้ายที่ต่อเนื่องจากแถวสินค้า (แถวว่างยังมีเส้น แต่บางเส้นอาจเป็นสีอื่น)
+    let tableBottom = best[best.length - 1];
+    for (const m of mids) if (m > tableBottom && m - tableBottom <= gap * 1.6) tableBottom = m;
+    return { lines: best, gap, bottom: tableBottom, k: gap / 28.5, W, H, code: c(-1), desc: c(0), qty: c(2), price: c(4), discount: c(5), amount: c(7) };
   }
 
   async function readGrid(g, src, G) {
@@ -1023,9 +1036,13 @@ td input.qty{width:72px;min-width:72px;text-align:right}
       const qtyRaw = await many(inkBox(src, qtyBox, k), '0123456789.');
       const qtyRead = SkuCore.voteQty(qtyRaw.map(x => { const m = x.match(/^(\d+)\.\d*$/); return m ? m[1] : x.replace(/\D/g, ''); }));
       const price = await money(cell(G.price, t));
-      const discountText = await many(inkBox(src, cell(G.discount, t), k), '0123456789');
-      const discountCounts = discountText.map(x => parseInt(x.replace(/\D/g, ''), 10)).filter(x => !isNaN(x) && x <= 100);
-      const discount = SkuCore.voteNumber(discountCounts);
+      // ช่องส่วนลดว่าง = ไม่มีส่วนลด
+      const discBox = cell(G.discount, t);
+      let discount = 0;
+      if (hasInk(src, discBox, k)) {
+        const discountText = await many(inkBox(src, discBox, k), '0123456789');
+        discount = SkuCore.voteNumber(discountText.map(x => parseInt(x.replace(/\D/g, ''), 10)).filter(x => !isNaN(x) && x <= 100));
+      }
       const amount = await money(cell(G.amount, t));
       let qty = qtyRead.qty, qtySure = false;
       if (price !== null && discount !== null && amount !== null) {
@@ -1045,8 +1062,9 @@ td input.qty{width:72px;min-width:72px;text-align:right}
     showProgress(g, 'กำลังอ่านยอดเงินในภาพ', 0.97);
     const last = G.lines[G.lines.length - 1];
     const footerMoney = [];
-    for (const step of [0.9, 1.9]) {
-      const y = last + step * G.gap - G.gap / 2 + 2 * k;
+    const spots = [last + 0.4 * G.gap, last + 1.4 * G.gap, G.bottom - 0.1 * G.gap, G.bottom + 0.2 * G.gap, G.bottom + 0.5 * G.gap];
+    for (const spot of spots) {
+      const y = spot + 2 * k;
       if (y + G.gap > G.H) continue;
       const box = { x: G.amount[0] + 12 * k, y, w: G.amount[1] - G.amount[0] - 14 * k, h: G.gap - 2 * k };
       for (const s of [2, 3, 4]) {
